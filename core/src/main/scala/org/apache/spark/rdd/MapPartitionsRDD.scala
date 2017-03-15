@@ -19,23 +19,42 @@ package org.apache.spark.rdd
 
 import scala.reflect.ClassTag
 
-import org.apache.spark.{Partition, TaskContext}
+import org.apache.spark.{Partition, TaskContext, TruncatedPartitionException}
 
 /**
  * An RDD that applies the provided function to every partition of the parent RDD.
  */
 private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
-    var prev: RDD[T],
+    @transient var prev: RDD[T],
     f: (TaskContext, Int, Iterator[T]) => Iterator[U],  // (TaskContext, partition index, iterator)
     preservesPartitioning: Boolean = false)
   extends RDD[U](prev) {
 
   override val partitioner = if (preservesPartitioning) firstParent[T].partitioner else None
 
+
+  override def getTruncatedPartitions(availableRDDs: List[RDD[_]]): Array[Partition] = {
+    if (availableRDDs.contains(this)) {
+      noDepPartitions
+    } else {
+      firstParent[T].truncatedPartitions(availableRDDs)
+    }
+  }
+
   override def getPartitions: Array[Partition] = firstParent[T].partitions
 
-  override def compute(split: Partition, context: TaskContext): Iterator[U] =
+  override private[spark] def computeOrReadCheckpoint(split: Partition, context: TaskContext): Iterator[U] =
+  {
+    if (isCheckpointedAndMaterialized) {
+      firstParent[U].iterator(split, context)
+    } else {
+      compute(split, context)
+    }
+  }
+
+  override def compute(split: Partition, context: TaskContext): Iterator[U] = {
     f(context, split.index, firstParent[T].iterator(split, context))
+  }
 
   override def clearDependencies() {
     super.clearDependencies()

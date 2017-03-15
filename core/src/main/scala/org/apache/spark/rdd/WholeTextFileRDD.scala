@@ -54,4 +54,9 @@ private[spark] class WholeTextFileRDD(
     }
     result
   }
+
+  // This doesn't need no dep copy. As it doesn't contain further RDDs
+  override def getTruncatedPartitions(availableRDDs: List[RDD[_]]): Array[Partition] = {
+    getPartitions
+  }
 }

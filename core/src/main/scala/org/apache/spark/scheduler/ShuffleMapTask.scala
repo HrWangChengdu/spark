@@ -30,6 +30,8 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
 import org.apache.spark.shuffle.ShuffleWriter
 
+import org.apache.log4j.{Level, LogManager, PropertyConfigurator}
+
 /**
  * A ShuffleMapTask divides the elements of an RDD into multiple buckets (based on a partitioner
  * specified in the ShuffleDependency).
@@ -53,8 +55,9 @@ import org.apache.spark.shuffle.ShuffleWriter
 private[spark] class ShuffleMapTask(
     stageId: Int,
     stageAttemptId: Int,
-    taskBinary: Broadcast[Array[Byte]],
-    partition: Partition,
+    var taskBinary: Broadcast[Array[Byte]],
+    @transient var taskBinary_truncated: Broadcast[Array[Byte]],
+    var partition: Partition,
     @transient private var locs: Seq[TaskLocation],
     metrics: TaskMetrics,
     localProperties: Properties,
@@ -65,9 +68,32 @@ private[spark] class ShuffleMapTask(
     appId, appAttemptId)
   with Logging {
 
+  override def useTruncatedPartition(truncatedPartition: Partition) {
+    assert(fullPartition == null)
+    assert(truncatedPartition.index == partition.index)
+    fullPartition = partition
+    partition = truncatedPartition
+  }
+
+  override def restoreToFullPartition() {
+    assert(fullPartition != null)
+    partition = fullPartition
+    fullPartition = null
+  }
+
+  override def switchTruncatedTaskBinary() {
+    val buffer = taskBinary
+    taskBinary = taskBinary_truncated
+    taskBinary_truncated = buffer
+  }
+
+  override def setFullTaskBinary(t: Broadcast[Array[Byte]]) {
+    taskBinary = t
+  }
+
   /** A constructor used only in test suites. This does not require passing in an RDD. */
   def this(partitionId: Int) {
-    this(0, 0, null, new Partition { override def index: Int = 0 }, null, null, new Properties)
+    this(0, 0, null, null, new Partition { override def index: Int = 0 }, null, null, new Properties)
   }
 
   @transient private val preferredLocs: Seq[TaskLocation] = {
@@ -75,6 +101,11 @@ private[spark] class ShuffleMapTask(
   }
 
   override def runTask(context: TaskContext): MapStatus = {
+    val extra_log = org.apache.log4j.LogManager.getLogger("extraLogger_" + SparkEnv.get.executorId)
+    val basicLogComponent = "TaskAttempt ID:" + context.taskAttemptId().toString() +
+      ",Partition Id:" + context.partitionId().toString +
+      ",Stage Id:" + context.stageId().toString
+
     // Deserialize the RDD using the broadcast variable.
     val threadMXBean = ManagementFactory.getThreadMXBean
     val deserializeStartTime = System.currentTimeMillis()
@@ -88,13 +119,18 @@ private[spark] class ShuffleMapTask(
     _executorDeserializeCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
       threadMXBean.getCurrentThreadCpuTime - deserializeStartCpuTime
     } else 0L
+    extra_log.info("[ShuffleMapTask]StartAt:" + System.currentTimeMillis().toString + ","
+      + basicLogComponent)
 
     var writer: ShuffleWriter[Any, Any] = null
     try {
       val manager = SparkEnv.get.shuffleManager
       writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
-      writer.stop(success = true).get
+      val funcRet = writer.stop(success = true).get
+      extra_log.info("[ShuffleMapTask]EndAt:" + System.currentTimeMillis().toString + ","
+        + basicLogComponent )
+      funcRet
     } catch {
       case e: Exception =>
         try {

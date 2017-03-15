@@ -50,6 +50,13 @@ private[spark] class NewHadoopPartition(
   override def hashCode(): Int = 31 * (31 + rddId) + index
 
   override def equals(other: Any): Boolean = super.equals(other)
+
+  override def noDepCopy(): Partition = {
+    val part =  new NewHadoopPartition(rddId, index, null)
+    part.isNoDependency = true
+    part
+  }
+
 }
 
 /**
@@ -128,6 +135,11 @@ class NewHadoopRDD[K, V](
       result(i) = new NewHadoopPartition(id, i, rawSplits(i).asInstanceOf[InputSplit with Writable])
     }
     result
+  }
+
+  // This doesn't need no dep copy. As it doesn't contain further RDDs
+  override def getTruncatedPartitions(availableRDDs: List[RDD[_]]): Array[Partition] = {
+    getPartitions
   }
 
   override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[(K, V)] = {

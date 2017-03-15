@@ -23,6 +23,7 @@ import java.util.Properties
 
 import scala.collection.mutable
 import scala.collection.mutable.HashMap
+import org.apache.spark.broadcast.Broadcast
 
 import org.apache.spark._
 import org.apache.spark.executor.TaskMetrics
@@ -30,6 +31,7 @@ import org.apache.spark.memory.{MemoryMode, TaskMemoryManager}
 import org.apache.spark.metrics.MetricsSystem
 import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.util._
+import org.apache.log4j.LogManager
 
 /**
  * A unit of execution. We have two kinds of Task's in Spark:
@@ -63,6 +65,29 @@ private[spark] abstract class Task[T](
     val jobId: Option[Int] = None,
     val appId: Option[String] = None,
     val appAttemptId: Option[String] = None) extends Serializable {
+
+  // The variable to store full partition when the driver is using truncated partition
+  @transient var fullPartition: Partition = null
+
+  // The method to add truncated partition
+  def useTruncatedPartition(truncatedPartition: Partition) {
+    throw new SparkException("useTruncatedPartition not implemented")
+  }
+
+  // Restore to full partition. This is usually called after useTruncatedPartition()
+  def restoreToFullPartition() {
+    throw new SparkException("restoreToFullPartition not implemented")
+  }
+
+  // Use truncated Task Binary
+  def switchTruncatedTaskBinary() {
+    throw new SparkException("switchTruncatedTaskBinary not implemented")
+  }
+
+  // Set full task binary
+  def setFullTaskBinary(t: Broadcast[Array[Byte]]) {
+    throw new SparkException("setFullTaskBinary not implemented")
+  }
 
   /**
    * Called by [[org.apache.spark.executor.Executor]] to run this task.
@@ -222,11 +247,32 @@ private[spark] object Task {
     val out = new ByteBufferOutputStream(4096)
     val dataOut = new DataOutputStream(out)
 
+    val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+
+    val conf = SparkEnv.get.conf
     // Write currentFiles
     dataOut.writeInt(currentFiles.size)
     for ((name, timestamp) <- currentFiles) {
       dataOut.writeUTF(name)
       dataOut.writeLong(timestamp)
+    }
+
+    if (conf.getBoolean("spark.cacheopt.NetworkTrafficBreakDown", false)) {
+      var fileSize = 0
+      fileSize += serializer.serialize(currentFiles.size).limit
+      for ((name, timestamp) <- currentFiles) {
+        fileSize += serializer.serialize(name).limit
+        fileSize += serializer.serialize(timestamp).limit
+      }
+      network_log.info(s"""TempLog: TaskSent fileSize $fileSize""")
+
+      var jarSize = 0
+      jarSize += serializer.serialize(currentJars.size).limit
+      for ((name, timestamp) <- currentJars) {
+        jarSize += serializer.serialize(name).limit
+        jarSize += serializer.serialize(timestamp).limit
+      }
+      network_log.info(s"""TempLog: TaskSent jarSize $jarSize""")
     }
 
     // Write currentJars
@@ -244,6 +290,9 @@ private[spark] object Task {
     // Write the task itself and finish
     dataOut.flush()
     val taskBytes = serializer.serialize(task)
+    if (conf.getBoolean("spark.cacheopt.NetworkTrafficBreakDown", false)) {
+      network_log.info(s"""TempLog: TaskSent pureTaskSize ${taskBytes.limit}""")
+    }
     Utils.writeByteBuffer(taskBytes, out)
     out.close()
     out.toByteBuffer

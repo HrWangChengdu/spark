@@ -44,6 +44,7 @@ import org.apache.spark.util.{BoundedPriorityQueue, Utils}
 import org.apache.spark.util.collection.OpenHashMap
 import org.apache.spark.util.random.{BernoulliCellSampler, BernoulliSampler, PoissonSampler,
   SamplingUtils}
+import org.apache.log4j.{Level, LogManager, PropertyConfigurator}
 
 /**
  * A Resilient Distributed Dataset (RDD), the basic abstraction in Spark. Represents an immutable,
@@ -123,6 +124,11 @@ abstract class RDD[T: ClassTag](
    *   `rdd.partitions.zipWithIndex.forall { case (partition, index) => partition.index == index }`
    */
   protected def getPartitions: Array[Partition]
+  protected def getTruncatedPartitions(availableRDDs: List[RDD[_]]): Array[Partition] = {
+    throw new UnsupportedOperationException(
+      "Undefined getTruncatedPartitions")
+  }
+
 
   /**
    * Implemented by subclasses to return how this RDD depends on parent RDDs. This method will only
@@ -223,11 +229,46 @@ abstract class RDD[T: ClassTag](
 
   // Our dependencies and partitions will be gotten by calling subclass's methods below, and will
   // be overwritten when we're checkpointed
-  private var dependencies_ : Seq[Dependency[_]] = null
+  // Change from private to protected so that RDD in streaming module
+  // could change it in remove_dependencies()
+  protected[spark] var dependencies_ : Seq[Dependency[_]] = null
+
+  // place holder for dependencies_ when remove_dependencies() is called
+  @transient var org_dependencies_ : Seq[Dependency[_]] = null
+
   @transient private var partitions_ : Array[Partition] = null
+  // Generate the truncated partitions on the target RDD by the available RDDs.
+  // The truncated partitions are the same as original partitions except all the
+  // ancestors prior to available RDDs are truncated. As the computation only requires
+  // the data in availableRDDs if they're present in the worker's memory.
+  @transient private var truncatedPartitions_ : Array[Partition] = null
+
+  // noDepPartitions_ means the partition only contains the index of current RDD and its
+  // dependency on the ancestor partitions, if any, are removed. The noDepPartitions_ is
+  // used in the processing of building truncatedPartitions_.
+  @transient private var noDepPartitions_ : Array[Partition] = null
+  @transient private var availableRDDsForTruncatedPartitions_ : List[RDD[_]] = null
 
   /** An Option holding our checkpoint RDD, if we are checkpointed */
   private def checkpointRDD: Option[CheckpointRDD[T]] = checkpointData.flatMap(_.checkpointRDD)
+
+  // Put orpendencies into a transient variable, so that serialization process would skip it
+  def remove_dependencies {
+    if ((org_dependencies_ == null) && (dependencies_ != null)) {
+      org_dependencies_ = dependencies_
+      dependencies_ = null
+    }
+  }
+
+  /**
+   * Restore prev dependencies
+   */
+  def restore_dependencies {
+    if (org_dependencies_ != null && (dependencies_ == null)) {
+      dependencies_ = org_dependencies_
+      org_dependencies_ = null
+    }
+  }
 
   /**
    * Get the list of dependencies of this RDD, taking into account whether the
@@ -235,7 +276,7 @@ abstract class RDD[T: ClassTag](
    */
   final def dependencies: Seq[Dependency[_]] = {
     checkpointRDD.map(r => List(new OneToOneDependency(r))).getOrElse {
-      if (dependencies_ == null) {
+      if (dependencies_ == null && org_dependencies_ == null) {
         dependencies_ = getDependencies
       }
       dependencies_
@@ -257,6 +298,34 @@ abstract class RDD[T: ClassTag](
       }
       partitions_
     }
+  }
+
+  final def noDepPartitions(): Array[Partition] = {
+    if (noDepPartitions_ == null) {
+      noDepPartitions_ = new Array[Partition](partitions.length)
+      for (i <- 0 until noDepPartitions_.length) {
+        noDepPartitions_(i) = partitions(i).noDepCopy()
+      }
+    }
+    noDepPartitions_
+  }
+
+  /**
+   * Get the array of TruncatedPartitions of this RDD
+   */
+  final def truncatedPartitions(availableRDDs: List[RDD[_]] = null): Array[Partition] = {
+    // When availableRDDs is null, it means return current the truncatedPartition
+    if (truncatedPartitions_ == null ||
+      (availableRDDsForTruncatedPartitions_ != availableRDDs && (availableRDDs!=null))) {
+      assert(availableRDDs!=null)
+      availableRDDsForTruncatedPartitions_ = availableRDDs
+      truncatedPartitions_ = getTruncatedPartitions(availableRDDs)
+      truncatedPartitions_.zipWithIndex.foreach { case (partition, index) =>
+        require(partition.index == index,
+          s"partitions($index).partition == ${partition.index}, but it should equal $index")
+      }
+    }
+    truncatedPartitions_
   }
 
   /**
@@ -281,12 +350,34 @@ abstract class RDD[T: ClassTag](
    * subclasses of RDD.
    */
   final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
+    // Log the execution time of each RDD computation
+    val extra_log = org.apache.log4j.LogManager.getLogger("extraLogger_" + SparkEnv.get.executorId)
+    val basicLogComponent = "RDD ID:" + id + ",Name:" + this.name + ",TaskAttempt ID:" +
+      context.taskAttemptId().toString() + ",Partition Id:" + context.partitionId().toString +
+      ",Stage Id:" + context.stageId().toString
     if (storageLevel != StorageLevel.NONE) {
-      getOrCompute(split, context)
+      extra_log.info("[iterator.FromCache]StartAt:" + System.currentTimeMillis().toString + ","
+        + basicLogComponent)
+      val funcret = getOrCompute(split, context)
+      extra_log.info("[iterator.FromCache]EndAt:" + System.currentTimeMillis().toString + ","
+        + basicLogComponent)
+      funcret
     } else {
-      computeOrReadCheckpoint(split, context)
+      extra_log.info("[iterator.FromParent]StartAt:" + System.currentTimeMillis().toString + ","
+        + basicLogComponent)
+      val funcret = computeOrReadCheckpoint(split, context)
+      extra_log.info("[iterator.FromParent]EndAt:" + System.currentTimeMillis().toString + ","
+        + basicLogComponent)
+      funcret
     }
   }
+
+  /*
+   * As the list of ancestor rdds might grow very long, only
+   * fetches the limited number in case it uses too long time
+   */
+  val useCacheOpt: Boolean = sc.getConf.getBoolean("spark.cacheopt.UseCacheOpt", false)
+  val ancestorNum: Int = sc.getConf.getInt("spark.cacheopt.ancestorNum", 10)
 
   /**
    * Return the ancestors of the given RDD that are related to it only through a sequence of
@@ -301,8 +392,10 @@ abstract class RDD[T: ClassTag](
       val narrowParents = narrowDependencies.map(_.rdd)
       val narrowParentsNotVisited = narrowParents.filterNot(ancestors.contains)
       narrowParentsNotVisited.foreach { parent =>
-        ancestors.add(parent)
-        visit(parent)
+        if (!useCacheOpt || ancestors.size < ancestorNum ) {
+          ancestors.add(parent)
+          visit(parent)
+        }
       }
     }
 
@@ -320,6 +413,11 @@ abstract class RDD[T: ClassTag](
     if (isCheckpointedAndMaterialized) {
       firstParent[T].iterator(split, context)
     } else {
+      // If the partition contains no dependency of ancestors,
+      // returns exception as compute() might require them.
+      if (split.isNoDependency) {
+        throw new TruncatedPartitionException(id, name)
+      }
       compute(split, context)
     }
   }

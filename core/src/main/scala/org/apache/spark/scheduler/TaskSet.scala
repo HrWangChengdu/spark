@@ -17,7 +17,9 @@
 
 package org.apache.spark.scheduler
 
+import org.apache.spark.Partition
 import java.util.Properties
+import org.apache.spark.broadcast.Broadcast
 
 /**
  * A set of tasks submitted together to the low-level TaskScheduler, usually representing
@@ -28,7 +30,9 @@ private[spark] class TaskSet(
     val stageId: Int,
     val stageAttemptId: Int,
     val priority: Int,
-    val properties: Properties) {
+    val properties: Properties,
+    val truncatedPartitions: Array[Partition] = null,
+    val generateFullTaskBinary: () => Broadcast[Array[Byte]] = null) {
   val id: String = stageId + "." + stageAttemptId
 
   override def toString: String = "TaskSet " + id

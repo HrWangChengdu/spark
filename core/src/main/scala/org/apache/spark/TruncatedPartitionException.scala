@@ -15,24 +15,20 @@
  * limitations under the License.
  */
 
-package org.apache.spark.rdd
+package org.apache.spark
 
-import scala.reflect.ClassTag
 
-import org.apache.spark.{Partition, SparkContext, TaskContext}
+import org.apache.spark._
+import org.apache.spark.annotation.DeveloperApi
 
 /**
- * An RDD that has no partitions and no elements.
+ * :: DeveloperApi ::
+ * Exception thrown when the assumption on truncated partition breaks (i.e., the node fails and lost some of the computed rdds).
  */
-private[spark] class EmptyRDD[T: ClassTag](sc: SparkContext) extends RDD[T](sc, Nil) {
+@DeveloperApi
+class TruncatedPartitionException(
+  rddId: Int,
+  rddName: String) extends Exception {
 
-  override def getPartitions: Array[Partition] = Array.empty
-
-  override def getTruncatedPartitions(availableRDDs: List[RDD[_]]): Array[Partition] = {
-    getPartitions
-  }
-
-  override def compute(split: Partition, context: TaskContext): Iterator[T] = {
-    throw new UnsupportedOperationException("empty RDD")
-  }
+  def toTaskFailedReason: TaskFailedReason = TruncatedPartitionFailed(rddId, rddName)
 }

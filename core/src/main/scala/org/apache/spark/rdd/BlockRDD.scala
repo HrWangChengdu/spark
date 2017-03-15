@@ -40,6 +40,10 @@ class BlockRDD[T: ClassTag](sc: SparkContext, @transient val blockIds: Array[Blo
     }.toArray
   }
 
+  override def getTruncatedPartitions(availableRDDs: List[RDD[_]]): Array[Partition] = {
+    getPartitions
+  }
+
   override def compute(split: Partition, context: TaskContext): Iterator[T] = {
     assertValid()
     val blockManager = SparkEnv.get.blockManager

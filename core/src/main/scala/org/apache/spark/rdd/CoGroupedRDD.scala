@@ -44,7 +44,9 @@ private[spark] case class NarrowCoGroupSplitDep(
   @throws(classOf[IOException])
   private def writeObject(oos: ObjectOutputStream): Unit = Utils.tryOrIOException {
     // Update the reference to parent split at the time of task serialization
-    split = rdd.partitions(splitIndex)
+    // split could be already set by the truncated partition
+    if (split == null)
+      split = rdd.partitions(splitIndex)
     oos.defaultWriteObject()
   }
 }
@@ -62,6 +64,12 @@ private[spark] class CoGroupPartition(
   extends Partition with Serializable {
   override def hashCode(): Int = index
   override def equals(other: Any): Boolean = super.equals(other)
+
+  override def noDepCopy(): Partition = {
+    val part =  new CoGroupPartition(index, null)
+    part.isNoDependency = true
+    part
+  }
 }
 
 /**
@@ -125,6 +133,28 @@ class CoGroupedRDD[K: ClassTag](
     }
     array
   }
+
+  override def getTruncatedPartitions(availableRDDs: List[RDD[_]]): Array[Partition] = {
+    if (availableRDDs.contains(this)) {
+      noDepPartitions
+    } else {
+      val array = new Array[Partition](part.numPartitions)
+      for (i <- 0 until array.length) {
+        // Each CoGroupPartition will have a dependency per contributing RDD
+        array(i) = new CoGroupPartition(i, rdds.zipWithIndex.map { case (rdd, j) =>
+          // Assume each RDD contributed a single dependency, and get it
+          dependencies(j) match {
+            case s: ShuffleDependency[_, _, _] =>
+              None
+            case _ =>
+              Some(new NarrowCoGroupSplitDep(rdd, i, rdd.truncatedPartitions(availableRDDs)(i)))
+          }
+        }.toArray)
+      }
+      array
+    }
+  }
+
 
   override val partitioner: Some[Partitioner] = Some(part)
 

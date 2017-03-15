@@ -28,9 +28,11 @@ import org.apache.spark.SparkConf
 import org.apache.spark.serializer.{KryoInputObjectInputBridge, KryoOutputObjectOutputBridge}
 import org.apache.spark.streaming.util.OpenHashMapBasedStateMap._
 import org.apache.spark.util.collection.OpenHashMap
+import org.apache.spark.util.CachedSizeEstimation
 
 /** Internal interface for defining the map that keeps track of sessions. */
-private[streaming] abstract class StateMap[K, S] extends Serializable {
+// Extends statemap with CachedSizeEstimation so that the CPU time oin size estimation is controlled
+private[streaming] abstract class StateMap[K, S] extends Serializable with CachedSizeEstimation{
 
   /** Get the state for a key if it exists */
   def get(key: K): Option[S]

@@ -31,6 +31,8 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.scheduler.SchedulingMode._
 import org.apache.spark.TaskState.TaskState
 import org.apache.spark.util.{AccumulatorV2, Clock, SystemClock, Utils}
+import org.apache.log4j.LogManager
+import org.apache.spark.broadcast.Broadcast
 
 /**
  * Schedules the tasks within a single TaskSet in the TaskSchedulerImpl. This class keeps track of
@@ -58,6 +60,8 @@ private[spark] class TaskSetManager(
   // Quantile of tasks at which to start speculation
   val SPECULATION_QUANTILE = conf.getDouble("spark.speculation.quantile", 0.75)
   val SPECULATION_MULTIPLIER = conf.getDouble("spark.speculation.multiplier", 1.5)
+  val useCacheOpt: Boolean = conf.getBoolean("spark.cacheopt.UseCacheOpt", false)
+  val networkTrafficBreakDown: Boolean = conf.getBoolean("spark.cacheopt.NetworkTrafficBreakDown", false)
 
   // Limit of bytes for total size of results (default is 1GB)
   val maxResultSize = Utils.getMaxResultSize(conf)
@@ -67,6 +71,16 @@ private[spark] class TaskSetManager(
   val ser = env.closureSerializer.newInstance()
 
   val tasks = taskSet.tasks
+
+  var taskbinary_ : Broadcast[Array[Byte]] = null
+
+  private def taskbinary(): Broadcast[Array[Byte]] = {
+    if (taskbinary_ == null) {
+      taskbinary_ = taskSet.generateFullTaskBinary()
+    }
+    taskbinary_
+  }
+
   val numTasks = tasks.length
   val copiesRunning = new Array[Int](numTasks)
   val successful = new Array[Boolean](numTasks)
@@ -432,6 +446,20 @@ private[spark] class TaskSetManager(
       dequeueTask(execId, host, allowedLocality).map { case ((index, taskLocality, speculative)) =>
         // Found a task; do some bookkeeping and return a task description
         val task = tasks(index)
+        val taskIndex = task.partitionId
+        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        if (useCacheOpt) {
+          // Use truncated partition and task binary at first
+          if (numFailures(index) == 0) {
+            task.useTruncatedPartition(taskSet.truncatedPartitions(taskIndex))
+            task.switchTruncatedTaskBinary
+          // If fails, fallback to original (full) partition and (full) taskbinary
+          } else if (numFailures(index) == 1) {
+            network_log.info("Fails. generate full task binary")
+            task.restoreToFullPartition()
+            task.setFullTaskBinary(taskbinary())
+          }
+        }
         val taskId = sched.newTaskId()
         // Do various bookkeeping
         copiesRunning(index) += 1
@@ -446,6 +474,39 @@ private[spark] class TaskSetManager(
           currentLocalityIndex = getLocalityIndex(taskLocality)
           lastLaunchTime = curTime
         }
+        task match {
+          case rt: ResultTask[_, _] =>
+            if (networkTrafficBreakDown) {
+              val taskBinarySize = ser.serialize(rt.taskBinary).limit
+              val partitionSize = ser.serialize(rt.partition).limit
+              network_log.info(
+s"""TempLog: TaskSent taskBinarySize $taskBinarySize
+TempLog: TaskSent partitionSize $partitionSize""")
+            }
+          case smt: ShuffleMapTask =>
+            if (networkTrafficBreakDown) {
+              val taskBinarySize = ser.serialize(smt.taskBinary).limit
+              val partitionSize = ser.serialize(smt.partition).limit
+              network_log.info(
+s"""TempLog: TaskSent taskBinarySize $taskBinarySize
+TempLog: TaskSent partitionSize $partitionSize""")
+            }
+          case _ =>
+            network_log.info(s"TempLog: TaskSent NoTaskMatch 0")
+        }
+
+
+        if (networkTrafficBreakDown) {
+          val propertySize = ser.serialize(task.localProperties).limit
+          val appIdSize = ser.serialize(task.appId).limit
+          val metricSize = ser.serialize(task.metrics).limit
+          val appAttemptIdSize = ser.serialize(task.appAttemptId).limit
+          network_log.info(s"""TempLog: TaskSent appIdSize $appIdSize
+TempLog: TaskSent appAttemptIdSize $appAttemptIdSize
+TempLog: TaskSent propertySize $propertySize
+TempLog: TaskSent metricSize $metricSize""")
+        }
+
         // Serialize and return the task
         val startTime = clock.getTimeMillis()
         val serializedTask: ByteBuffer = try {
@@ -476,6 +537,10 @@ private[spark] class TaskSetManager(
           s"partition ${task.partitionId}, $taskLocality, ${serializedTask.limit} bytes)")
 
         sched.dagScheduler.taskStarted(task, info)
+
+        if (networkTrafficBreakDown) {
+          network_log.info(s"TempLog: TaskSent taskWithJarAndFile ${serializedTask.limit}")
+        }
         new TaskDescription(taskId = taskId, attemptNumber = attemptNum, execId,
           taskName, index, serializedTask)
       }
@@ -729,6 +794,11 @@ private[spark] class TaskSetManager(
           tasksSuccessful += 1
         }
         isZombie = true
+        None
+
+      case truncatedPartitionFailed: TruncatedPartitionFailed =>
+        logWarning(failureReason)
+        // Do not change isZombie flag
         None
 
       case ef: ExceptionFailure =>

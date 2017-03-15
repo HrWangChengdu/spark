@@ -118,11 +118,14 @@ class InternalMapWithStateDStream[K: ClassTag, V: ClassTag, S: ClassTag, E: Clas
   override def dependencies: List[DStream[_]] = List(parent)
 
   /** Enable automatic checkpointing */
-  override val mustCheckpoint = true
+  // override val mustCheckpoint = true
+  // Allow turning off the checkpoint option so that streaming app without checkpointing could
+  // be tested
+  override val mustCheckpoint = !SparkEnv.get.conf.getBoolean("spark.cacheopt.UseCacheOpt", false)
 
   /** Override the default checkpoint duration */
   override def initialize(time: Time): Unit = {
-    if (checkpointDuration == null) {
+    if (mustCheckpoint && checkpointDuration == null) {
       checkpointDuration = slideDuration * DEFAULT_CHECKPOINT_DURATION_MULTIPLIER
     }
     super.initialize(time)

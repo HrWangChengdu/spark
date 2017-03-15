@@ -61,6 +61,12 @@ private[spark] class HadoopPartition(rddId: Int, override val index: Int, s: Inp
 
   override def equals(other: Any): Boolean = super.equals(other)
 
+  override def noDepCopy(): Partition = {
+    val part =  new HadoopPartition(rddId, index, null)
+    part.isNoDependency = true
+    part
+  }
+
   /**
    * Get any environment variables that should be added to the users environment when running pipes
    * @return a Map with the environment variables and corresponding values, it could be empty
@@ -205,6 +211,11 @@ class HadoopRDD[K, V](
       array(i) = new HadoopPartition(id, i, inputSplits(i))
     }
     array
+  }
+
+  // This doesn't need no dep copy. As it doesn't contain further RDDs
+  override def getTruncatedPartitions(availableRDDs: List[RDD[_]]): Array[Partition] = {
+    getPartitions
   }
 
   override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[(K, V)] = {

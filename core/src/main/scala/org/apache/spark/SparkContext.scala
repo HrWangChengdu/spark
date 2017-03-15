@@ -1910,10 +1910,19 @@ class SparkContext(config: SparkConf) extends Logging {
       throw new IllegalStateException("SparkContext has been shutdown")
     }
     val callSite = getCallSite
+    // Remove the dependencies temporarily, as long lineage would slows down the
+    // cleaning processk
+    val useCacheOpt = conf.getBoolean("spark.cacheopt.UseCacheOpt", false)
+    if (useCacheOpt) {
+      rdd.remove_dependencies
+    }
     val cleanedFunc = clean(func)
     logInfo("Starting job: " + callSite.shortForm)
     if (conf.getBoolean("spark.logLineage", false)) {
       logInfo("RDD's recursive dependencies:\n" + rdd.toDebugString)
+    }
+    if (useCacheOpt) {
+      rdd.restore_dependencies
     }
     dagScheduler.runJob(rdd, cleanedFunc, partitions, callSite, resultHandler, localProperties.get)
     progressBar.foreach(_.finishAll())
@@ -1940,7 +1949,16 @@ class SparkContext(config: SparkConf) extends Logging {
       rdd: RDD[T],
       func: Iterator[T] => U,
       partitions: Seq[Int]): Array[U] = {
+    // Remove the dependencies temporarily, as long lineage would slows down the
+    // cleaning processk
+    val useCacheOpt = conf.getBoolean("spark.cacheopt.UseCacheOpt", false)
+    if (useCacheOpt) {
+      rdd.remove_dependencies
+    }
     val cleanedFunc = clean(func)
+    if (useCacheOpt) {
+      rdd.restore_dependencies
+    }
     runJob(rdd, (ctx: TaskContext, it: Iterator[T]) => cleanedFunc(it), partitions)
   }
 

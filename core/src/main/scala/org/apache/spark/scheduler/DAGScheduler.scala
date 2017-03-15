@@ -43,6 +43,8 @@ import org.apache.spark.rpc.RpcTimeout
 import org.apache.spark.storage._
 import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
 import org.apache.spark.util._
+import org.apache.log4j.LogManager
+import org.apache.log4j.Logger
 
 /**
  * The high-level scheduling layer that implements stage-oriented scheduling. It computes a DAG of
@@ -187,6 +189,9 @@ class DAGScheduler(
   /** If enabled, FetchFailed will not cause stage retry, in order to surface the problem. */
   private val disallowStageRetryForTest = sc.getConf.getBoolean("spark.test.noStageRetry", false)
 
+  private val networkTrafficBreakDown: Boolean = sc.getConf.getBoolean("spark.cacheopt.NetworkTrafficBreakDown", false)
+  private val useCacheOpt: Boolean = sc.getConf.getBoolean("spark.cacheopt.UseCacheOpt", false)
+
   private val messageScheduler =
     ThreadUtils.newDaemonSingleThreadScheduledExecutor("dag-scheduler-message")
 
@@ -319,7 +324,20 @@ class DAGScheduler(
   def createShuffleMapStage(shuffleDep: ShuffleDependency[_, _, _], jobId: Int): ShuffleMapStage = {
     val rdd = shuffleDep.rdd
     val numTasks = rdd.partitions.length
-    val parents = getOrCreateParentStages(rdd, jobId)
+    // Generate only unfinished parent stages if cache opt is tunred on.
+    // If the parent stage is already finished, then it is not needed
+    // in submitWaitingChildStages()
+    // While the number of finished parent stages could be very long,
+    // when lineage is long. get all the parent srages is expensive
+    // and unnecessary for the stage scheduling
+
+    // TODO: clean all the stages when a failure occurs
+    // So that the missing parent stages are updated.
+    val parents = if (useCacheOpt)
+      getOrCreateMissingParentStages(rdd, jobId)
+    else
+      getOrCreateParentStages(rdd, jobId)
+
     val id = nextStageId.getAndIncrement()
     val stage = new ShuffleMapStage(id, rdd, numTasks, parents, jobId, rdd.creationSite, shuffleDep)
 
@@ -357,7 +375,11 @@ class DAGScheduler(
       partitions: Array[Int],
       jobId: Int,
       callSite: CallSite): ResultStage = {
-    val parents = getOrCreateParentStages(rdd, jobId)
+    // Please find comment in createShuffleMapStage
+    val parents = if (useCacheOpt)
+      getOrCreateMissingParentStages(rdd, jobId)
+    else
+      getOrCreateParentStages(rdd, jobId)
     val id = nextStageId.getAndIncrement()
     val stage = new ResultStage(id, rdd, func, partitions, parents, jobId, callSite)
     stageIdToStage(id) = stage
@@ -375,6 +397,18 @@ class DAGScheduler(
     }.toList
   }
 
+  /**
+   * Get or create the list of the missing parent stages for a given RDD.  The new Stages will be created with
+   * the provided firstJobId.
+   *
+   * Missing Parent Stages refer to those have not been computed out yet
+   */
+  private def getOrCreateMissingParentStages(rdd: RDD[_], firstJobId: Int): List[Stage] = {
+    getMissingShuffleDependencies(rdd).map { shuffleDep =>
+      getOrCreateShuffleMapStage(shuffleDep, firstJobId)
+    }.toList
+  }
+
   /** Find ancestor shuffle dependencies that are not registered in shuffleToMapStage yet */
   private def getMissingAncestorShuffleDependencies(
       rdd: RDD[_]): Stack[ShuffleDependency[_, _, _]] = {
@@ -388,7 +422,12 @@ class DAGScheduler(
       val toVisit = waitingForVisit.pop()
       if (!visited(toVisit)) {
         visited += toVisit
-        getShuffleDependencies(toVisit).foreach { shuffleDep =>
+        val deps = if (useCacheOpt)
+          getMissingShuffleDependencies(toVisit)
+        else
+          getShuffleDependencies(toVisit)
+
+        deps.foreach { shuffleDep =>
           if (!shuffleIdToMapStage.contains(shuffleDep.shuffleId)) {
             ancestors.push(shuffleDep)
             waitingForVisit.push(shuffleDep.rdd)
@@ -432,6 +471,45 @@ class DAGScheduler(
     parents
   }
 
+  /**
+   * Returns the missing shuffle dependencies that are immediate parents of the given RDD.
+   * Missing dependencies refer to those dependencies relate to a missing
+   * RDD.
+   * If a RDD is already available, such dependencies won't be added.
+   *
+   * This function will not return more distant ancestors.  For example, if C has a shuffle
+   * dependency on B which has a shuffle dependency on A:
+   *
+   * A <-- B <-- C
+   *
+   * calling this function with rdd C will only return the B <-- C dependency.
+   *
+   * This function is scheduler-visible for the purpose of unit testing.
+   */
+  private[scheduler] def getMissingShuffleDependencies(
+      rdd: RDD[_]): HashSet[ShuffleDependency[_, _, _]] = {
+    val parents = new HashSet[ShuffleDependency[_, _, _]]
+    val visited = new HashSet[RDD[_]]
+    val waitingForVisit = new Stack[RDD[_]]
+    waitingForVisit.push(rdd)
+    while (waitingForVisit.nonEmpty) {
+      val toVisit = waitingForVisit.pop()
+      if (!visited(toVisit)) {
+        visited += toVisit
+        val rddHasUncachedPartitions = getCacheLocs(toVisit).contains(Nil)
+        if (rddHasUncachedPartitions) {
+          toVisit.dependencies.foreach {
+            case shuffleDep: ShuffleDependency[_, _, _] =>
+              parents += shuffleDep
+            case dependency =>
+              waitingForVisit.push(dependency.rdd)
+          }
+        }
+      }
+    }
+    parents
+  }
+
   private def getMissingParentStages(stage: Stage): List[Stage] = {
     val missing = new HashSet[Stage]
     val visited = new HashSet[RDD[_]]
@@ -464,6 +542,39 @@ class DAGScheduler(
     missing.toList
   }
 
+  private def getAvailableParentRDDs(stage: Stage) : List[RDD[_]] = {
+    val available = new HashSet[RDD[_]]
+    val visited = new HashSet[RDD[_]]
+    // We are manually maintaining a stack here to prevent StackOverflowError
+    // caused by recursively visiting
+    val waitingForVisit = new Stack[RDD[_]]
+    def visit(rdd: RDD[_]) {
+      if (!visited(rdd)) {
+        visited += rdd
+        val rddHasUncachedPartitions = getCacheLocs(rdd).contains(Nil)
+        if (rddHasUncachedPartitions) {
+          for (dep <- rdd.dependencies) {
+            dep match {
+              case shufDep: ShuffleDependency[_, _, _] =>
+                val mapStage = getOrCreateShuffleMapStage(shufDep, stage.firstJobId)
+                assert(mapStage.isAvailable)
+                available += mapStage.rdd
+              case narrowDep: NarrowDependency[_] =>
+                waitingForVisit.push(narrowDep.rdd)
+            }
+          }
+        } else {
+          available += rdd
+        }
+      }
+    }
+    waitingForVisit.push(stage.rdd)
+    while (waitingForVisit.nonEmpty) {
+      visit(waitingForVisit.pop())
+    }
+    available.toList
+  }
+
   /**
    * Registers the given jobId among the jobs that need the given stage and
    * all of that stage's ancestors.
@@ -475,8 +586,12 @@ class DAGScheduler(
         val s = stages.head
         s.jobIds += jobId
         jobIdToStageIds.getOrElseUpdate(jobId, new HashSet[Int]()) += s.id
-        val parentsWithoutThisJobId = s.parents.filter { ! _.jobIds.contains(jobId) }
-        updateJobIdStageIdMapsList(parentsWithoutThisJobId ++ stages.tail)
+        // Only update the job of current stage when cache opt is turned on
+        // in case the parent stages grow to long due to long lineage
+        if (!useCacheOpt) {
+          val parentsWithoutThisJobId = s.parents.filter { ! _.jobIds.contains(jobId) }
+          updateJobIdStageIdMapsList(parentsWithoutThisJobId ++ stages.tail)
+        }
       }
     }
     updateJobIdStageIdMapsList(List(stage))
@@ -508,8 +623,13 @@ class DAGScheduler(
                   logDebug("Removing running stage %d".format(stageId))
                   runningStages -= stage
                 }
-                for ((k, v) <- shuffleIdToMapStage.find(_._2 == stage)) {
-                  shuffleIdToMapStage.remove(k)
+                // Keep stages in memory so that new jobs won't need to rebuild them from scratch
+                // One potential problem with the caching method is that the job information could be stale
+                if (!useCacheOpt) {
+                  for ((k, v) <- shuffleIdToMapStage.find(_._2 == stage)) {
+                    logInfo("Remove shuffleid %d from shuffleIdToMapStage".format(k))
+                    shuffleIdToMapStage.remove(k)
+                  }
                 }
                 if (waitingStages.contains(stage)) {
                   logDebug("Removing stage %d from waiting set.".format(stageId))
@@ -578,6 +698,8 @@ class DAGScheduler(
       // Return immediately if the job is running 0 tasks
       return new JobWaiter[U](this, jobId, 0, resultHandler)
     }
+    // Monitor the driver's memory usage
+    logInfo("Used Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024) + " MB")
 
     assert(partitions.size > 0)
     val func2 = func.asInstanceOf[(TaskContext, Iterator[_]) => _]
@@ -831,6 +953,8 @@ class DAGScheduler(
       callSite: CallSite,
       listener: JobListener,
       properties: Properties) {
+
+    var start = System.nanoTime
     var finalStage: ResultStage = null
     try {
       // New stage creation may throw an exception if, for example, jobs are run on a
@@ -845,11 +969,14 @@ class DAGScheduler(
 
     val job = new ActiveJob(jobId, finalStage, callSite, listener, properties)
     clearCacheLocs()
+    logInfo("MakeJob took %f s".format((System.nanoTime - start) / 1e9))
     logInfo("Got job %s (%s) with %d output partitions".format(
       job.jobId, callSite.shortForm, partitions.length))
     logInfo("Final stage: " + finalStage + " (" + finalStage.name + ")")
+    start = System.nanoTime
     logInfo("Parents of final stage: " + finalStage.parents)
     logInfo("Missing parents: " + getMissingParentStages(finalStage))
+    logInfo("Get Missing Parents & print took %f s".format((System.nanoTime - start) / 1e9))
 
     val jobSubmissionTime = clock.getTimeMillis()
     jobIdToActiveJob(jobId) = job
@@ -915,7 +1042,13 @@ class DAGScheduler(
         logDebug("missing: " + missing)
         if (missing.isEmpty) {
           logInfo("Submitting " + stage + " (" + stage.rdd + "), which has no missing parents")
-          submitMissingTasks(stage, jobId.get)
+          if (useCacheOpt) {
+            val rdds = getAvailableParentRDDs(stage)
+            logInfo(s"Available Parent RDDs # is ${rdds.length}")
+            submitMissingTasks(stage, jobId.get, rdds)
+          } else {
+            submitMissingTasks(stage, jobId.get, null)
+          }
         } else {
           for (parent <- missing) {
             submitStage(parent)
@@ -929,7 +1062,7 @@ class DAGScheduler(
   }
 
   /** Called when stage's parents are available and we can now do its task. */
-  private def submitMissingTasks(stage: Stage, jobId: Int) {
+  private def submitMissingTasks(stage: Stage, jobId: Int, availableRDDs: List[RDD[_]]) {
     logDebug("submitMissingTasks(" + stage + ")")
     // Get our pending tasks and remember them in our pendingTasks entry
     stage.pendingPartitions.clear()
@@ -974,6 +1107,7 @@ class DAGScheduler(
 
     stage.makeNewStageAttempt(partitionsToCompute.size, taskIdToLocations.values.toSeq)
     listenerBus.post(SparkListenerStageSubmitted(stage.latestInfo, properties))
+    val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
 
     // TODO: Maybe we can keep the taskBinary in Stage to avoid serializing it multiple times.
     // Broadcasted binary for the task, used to dispatch tasks to executors. Note that we broadcast
@@ -981,8 +1115,14 @@ class DAGScheduler(
     // task gets a different copy of the RDD. This provides stronger isolation between tasks that
     // might modify state of objects referenced in their closures. This is necessary in Hadoop
     // where the JobConf/Configuration object is not thread-safe.
+    val start = System.nanoTime
     var taskBinary: Broadcast[Array[Byte]] = null
-    try {
+    var taskBinary_truncated: Broadcast[Array[Byte]] = null
+
+    // The taskBinary with full lineage is generated upon failure when caching optimization flag is on.
+    // Instead of makeing it now, we pass a function to generate the binary on demand to save computation
+    // if there's no failure
+    def stageToBroadCast(): Broadcast[Array[Byte]] = {
       // For ShuffleMapTask, serialize and broadcast (rdd, shuffleDep).
       // For ResultTask, serialize and broadcast (rdd, func).
       val taskBinaryBytes: Array[Byte] = stage match {
@@ -992,8 +1132,73 @@ class DAGScheduler(
         case stage: ResultStage =>
           JavaUtils.bufferToArray(closureSerializer.serialize((stage.rdd, stage.func): AnyRef))
       }
+      if (networkTrafficBreakDown) {
+        stage match {
+          case stage: ShuffleMapStage =>
+            val rdd_object = closureSerializer.serialize(stage.rdd)
+            val dep_object = closureSerializer.serialize(stage.rdd.dependencies)
+            val shuffle_dep_object = closureSerializer.serialize(stage.shuffleDep)
+            network_log.info(
+              s"""TempLog: broadcasting rdd len is ${rdd_object.limit}
+              TempLog: dep len is ${dep_object.limit}
+              TempLog: shuffle_dep len is ${shuffle_dep_object.limit}""")
+          case stage: ResultStage =>
+            val rdd_object = closureSerializer.serialize(stage.rdd)
+            val dep_object = closureSerializer.serialize(stage.rdd.dependencies)
+            val func_object = closureSerializer.serialize(stage.func)
+            network_log.info(s"""TempLog: broadcasting rdd len is ${rdd_object.limit}
+              TempLog: dep len is ${dep_object.limit}
+              TempLog: func len is ${func_object.limit}""")
+        }
+      }
+      logInfo("# Bytes of taskBinaryBytes: " + taskBinaryBytes.length)
+      sc.broadcast(taskBinaryBytes)
+    }
+    try {
+      if (!useCacheOpt) {
+        taskBinary = stageToBroadCast()
+      } else {
+        // Temporarily remove all the depencies of the present RDDs so that the CPU time in
+        // serailization and network traffic are saved. This assumes that all present RDDs
+        // are available in the workers' memory.
+        for (rdd <- availableRDDs) {
+          rdd.remove_dependencies
+        }
 
-      taskBinary = sc.broadcast(taskBinaryBytes)
+        val taskBinaryBytes_truncated: Array[Byte] = stage match {
+          case stage: ShuffleMapStage =>
+            JavaUtils.bufferToArray(
+              closureSerializer.serialize((stage.rdd, stage.shuffleDep): AnyRef))
+          case stage: ResultStage =>
+            JavaUtils.bufferToArray(closureSerializer.serialize((stage.rdd, stage.func): AnyRef))
+        }
+        if (networkTrafficBreakDown) {
+          stage match {
+            case stage: ShuffleMapStage =>
+              val rdd_object = closureSerializer.serialize(stage.rdd)
+              val dep_object = closureSerializer.serialize(stage.rdd.dependencies)
+              val shuffle_dep_object = closureSerializer.serialize(stage.shuffleDep)
+              network_log.info(s"""TempLog: sub broadcasting rdd len is ${rdd_object.limit}
+                TempLog: dep len is ${dep_object.limit}
+                TempLog: shuffle_dep len is ${shuffle_dep_object.limit}""")
+            case stage: ResultStage =>
+              val rdd_object = closureSerializer.serialize(stage.rdd)
+              val dep_object = closureSerializer.serialize(stage.rdd.dependencies)
+              val func_object = closureSerializer.serialize(stage.func)
+              network_log.info(s"""TempLog: sub broadcasting rdd len is ${rdd_object.limit}
+                TempLog: dep len is ${dep_object.limit}
+                TempLog: func len is ${func_object.limit}""")
+          }
+        }
+
+        logInfo("# Bytes of taskBinaryBytes(truncated): " + taskBinaryBytes_truncated.length)
+        taskBinary_truncated = sc.broadcast(taskBinaryBytes_truncated)
+
+        // restore the dependencies
+        for (rdd <- availableRDDs) {
+          rdd.restore_dependencies
+        }
+      }
     } catch {
       // In the case of a failure during serialization, abort the stage.
       case e: NotSerializableException =>
@@ -1007,6 +1212,8 @@ class DAGScheduler(
         runningStages -= stage
         return
     }
+    logInfo("task binary serialize time %f s".format
+      ((System.nanoTime - start) / 1e9))
 
     val tasks: Seq[Task[_]] = try {
       stage match {
@@ -1015,7 +1222,7 @@ class DAGScheduler(
             val locs = taskIdToLocations(id)
             val part = stage.rdd.partitions(id)
             new ShuffleMapTask(stage.id, stage.latestInfo.attemptId,
-              taskBinary, part, locs, stage.latestInfo.taskMetrics, properties, Option(jobId),
+              taskBinary, taskBinary_truncated, part, locs, stage.latestInfo.taskMetrics, properties, Option(jobId),
               Option(sc.applicationId), sc.applicationAttemptId)
           }
 
@@ -1025,7 +1232,7 @@ class DAGScheduler(
             val part = stage.rdd.partitions(p)
             val locs = taskIdToLocations(id)
             new ResultTask(stage.id, stage.latestInfo.attemptId,
-              taskBinary, part, locs, id, properties, stage.latestInfo.taskMetrics,
+              taskBinary, taskBinary_truncated, part, locs, id, properties, stage.latestInfo.taskMetrics,
               Option(jobId), Option(sc.applicationId), sc.applicationAttemptId)
           }
       }
@@ -1040,8 +1247,20 @@ class DAGScheduler(
       logInfo("Submitting " + tasks.size + " missing tasks from " + stage + " (" + stage.rdd + ")")
       stage.pendingPartitions ++= tasks.map(_.partitionId)
       logDebug("New pending partitions: " + stage.pendingPartitions)
-      taskScheduler.submitTasks(new TaskSet(
-        tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties))
+
+      logInfo(s"UseCacheOpt: $useCacheOpt")
+      if (useCacheOpt)
+        // Generate the truncated partitions on the target RDD by the available RDDs.
+        // The truncated partitions are the same as original partitions except all the
+        // ancestors prior to available RDDs are truncated. As the computation only requires
+        // the data in availableRDDs if they're present in the worker's memory
+        taskScheduler.submitTasks(new TaskSet(
+          tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties,
+          stage.rdd.truncatedPartitions(availableRDDs), stageToBroadCast))
+      else
+        taskScheduler.submitTasks(new TaskSet(
+          tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties, null, null))
+
       stage.latestInfo.submissionTime = Some(clock.getTimeMillis())
     } else {
       // Because we posted SparkListenerStageSubmitted earlier, we should mark
@@ -1158,8 +1377,10 @@ class DAGScheduler(
                   job.numFinished += 1
                   // If the whole job has finished, remove it
                   if (job.numFinished == job.numPartitions) {
+                    val start = System.nanoTime
                     markStageAsFinished(resultStage)
                     cleanupStateForJobAndIndependentStages(job)
+                    logInfo("CleanStage and Print took %f s".format((System.nanoTime - start) / 1e9))
                     listenerBus.post(
                       SparkListenerJobEnd(job.jobId, clock.getTimeMillis(), JobSucceeded))
                   }
@@ -1302,6 +1523,9 @@ class DAGScheduler(
       case _: ExecutorLostFailure | TaskKilled | UnknownReason =>
         // Unrecognized failure - also do nothing. If the task fails repeatedly, the TaskScheduler
         // will abort the job.
+
+      case truncatedPartitionFailed: TruncatedPartitionFailed =>
+        // Do nothing; the TaskScheduler is handled by resubmitting
     }
   }
 

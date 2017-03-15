@@ -45,6 +45,12 @@ private[spark] class ParallelCollectionPartition[T: ClassTag](
     case _ => false
   }
 
+  override def noDepCopy(): Partition = {
+    val part =  new ParallelCollectionPartition(rddId, slice, values)
+    part.isNoDependency = true
+    part
+  }
+
   override def index: Int = slice
 
   @throws(classOf[IOException])
@@ -96,6 +102,11 @@ private[spark] class ParallelCollectionRDD[T: ClassTag](
   override def getPartitions: Array[Partition] = {
     val slices = ParallelCollectionRDD.slice(data, numSlices).toArray
     slices.indices.map(i => new ParallelCollectionPartition(id, i, slices(i))).toArray
+  }
+
+  // This doesn't need no dep copy. As it doesn't contain further RDDs
+  override def getTruncatedPartitions(availableRDDs: List[RDD[_]]): Array[Partition] = {
+    getPartitions
   }
 
   override def compute(s: Partition, context: TaskContext): Iterator[T] = {

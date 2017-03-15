@@ -106,6 +106,21 @@ case class FetchFailed(
 
 /**
  * :: DeveloperApi ::
+ * Task failed to use truncated partition information to generate the desired RDD.
+ * Probably means the executor has failed for a time and all the data stored in memory is gone
+ */
+@DeveloperApi
+case class TruncatedPartitionFailed(
+    rddId: Int,
+    rddName: String)
+  extends TaskFailedReason {
+  override def toErrorString: String = {
+    s"TruncatedPartitionFailed(rddId $rddId, rddName=$rddName)\n"
+  }
+}
+
+/**
+ * :: DeveloperApi ::
  * Task failed due to a runtime exception. This is the most common failure case and also captures
  * user program exceptions.
  *

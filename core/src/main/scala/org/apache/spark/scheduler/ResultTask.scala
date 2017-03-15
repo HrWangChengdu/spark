@@ -27,6 +27,8 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.rdd.RDD
 
+import org.apache.log4j.{Level, LogManager, PropertyConfigurator}
+
 /**
  * A task that sends back the output to the driver application.
  *
@@ -52,9 +54,10 @@ import org.apache.spark.rdd.RDD
 private[spark] class ResultTask[T, U](
     stageId: Int,
     stageAttemptId: Int,
-    taskBinary: Broadcast[Array[Byte]],
-    partition: Partition,
-    locs: Seq[TaskLocation],
+    var taskBinary: Broadcast[Array[Byte]],
+    @transient var taskBinary_truncated: Broadcast[Array[Byte]],
+    var partition: Partition,
+    val locs: Seq[TaskLocation],
     val outputId: Int,
     localProperties: Properties,
     metrics: TaskMetrics,
@@ -67,6 +70,29 @@ private[spark] class ResultTask[T, U](
 
   @transient private[this] val preferredLocs: Seq[TaskLocation] = {
     if (locs == null) Nil else locs.toSet.toSeq
+  }
+
+  override def useTruncatedPartition(truncatedPartition: Partition) {
+    assert(fullPartition == null)
+    assert(truncatedPartition.index == partition.index)
+    fullPartition = partition 
+    partition = truncatedPartition
+  }
+
+  override def restoreToFullPartition() {
+    assert(fullPartition != null)
+    partition = fullPartition
+    fullPartition = null
+  }
+
+  override def switchTruncatedTaskBinary() {
+    val buffer = taskBinary
+    taskBinary = taskBinary_truncated
+    taskBinary_truncated = buffer
+  }
+
+  override def setFullTaskBinary(t: Broadcast[Array[Byte]]) {
+    taskBinary = t
   }
 
   override def runTask(context: TaskContext): U = {
@@ -84,7 +110,18 @@ private[spark] class ResultTask[T, U](
       threadMXBean.getCurrentThreadCpuTime - deserializeStartCpuTime
     } else 0L
 
-    func(context, rdd.iterator(partition, context))
+    val extra_log = org.apache.log4j.LogManager.getLogger("extraLogger_" + SparkEnv.get.executorId)
+    val basicLogComponent = "TaskAttempt ID:" + context.taskAttemptId().toString() +
+      ",Partition Id:" + context.partitionId().toString +
+      ",Stage Id:" + context.stageId().toString
+
+    extra_log.info("[ResultTask]StartAt:" + System.currentTimeMillis().toString + ","
+      + basicLogComponent)
+    val funcRet = func(context, rdd.iterator(partition, context))
+    extra_log.info("[ResultTask]EndAt:" + System.currentTimeMillis().toString + ","
+      + basicLogComponent )
+
+    funcRet
   }
 
   // This is only callable on the driver side.
