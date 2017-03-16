@@ -34,6 +34,7 @@ import com.google.common.io.Closeables;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.apache.spark.SparkEnv;
 import org.apache.spark.Partitioner;
 import org.apache.spark.ShuffleDependency;
 import org.apache.spark.SparkConf;
@@ -47,6 +48,7 @@ import org.apache.spark.shuffle.IndexShuffleBlockResolver;
 import org.apache.spark.shuffle.ShuffleWriter;
 import org.apache.spark.storage.*;
 import org.apache.spark.util.Utils;
+import org.apache.log4j.*;
 
 /**
  * This class implements sort-based shuffle's hash-style shuffle fallback path. This write path
@@ -85,6 +87,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   private final int mapId;
   private final Serializer serializer;
   private final IndexShuffleBlockResolver shuffleBlockResolver;
+  private final TaskContext taskContext;
 
   /** Array of file writers, one for each partition */
   private DiskBlockObjectWriter[] partitionWriters;
@@ -118,15 +121,28 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     this.writeMetrics = taskContext.taskMetrics().shuffleWriteMetrics();
     this.serializer = dep.serializer();
     this.shuffleBlockResolver = shuffleBlockResolver;
+    this.taskContext = taskContext;
   }
 
   @Override
   public void write(Iterator<Product2<K, V>> records) throws IOException {
     assert (partitionWriters == null);
+
+    org.apache.log4j.Logger extra_log = org.apache.log4j.LogManager.getLogger("extraLogger_" + SparkEnv.get().executorId());
+    extra_log.setLevel(Level.INFO) ;
+    String basicLogComponent = "Shuffle ID:" + this.shuffleId +
+            ",TaskAttempt ID:" + this.taskContext.taskAttemptId() +
+            ",Partition Id:" + this.taskContext.partitionId() +
+            ",Stage Id:" + this.taskContext.stageId() ;
+    extra_log.info( "[BypassMergeSortShuffleWriter]StartAt:" +
+            System.currentTimeMillis() + "," + basicLogComponent );
+
     if (!records.hasNext()) {
       partitionLengths = new long[numPartitions];
       shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, null);
       mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths);
+      extra_log.info( "[BypassMergeSortShuffleWriter]EndAt:" +
+          System.currentTimeMillis() + "," + basicLogComponent );
       return;
     }
     final SerializerInstance serInstance = serializer.newInstance();
@@ -169,6 +185,9 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       }
     }
     mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths);
+
+    extra_log.info( "[BypassMergeSortShuffleWriter]EndAt:" +
+        System.currentTimeMillis() + "," + basicLogComponent );
   }
 
   @VisibleForTesting

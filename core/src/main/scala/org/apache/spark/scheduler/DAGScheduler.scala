@@ -1594,6 +1594,8 @@ class DAGScheduler(
 private[scheduler] class DAGSchedulerEventProcessLoop(dagScheduler: DAGScheduler)
   extends EventLoop[DAGSchedulerEvent]("dag-scheduler-event-loop") with Logging {
 
+  val failEventPrefix = "FailEvent"
+
   private[this] val timer = dagScheduler.metricsSource.messageProcessingTimer
 
   /**
@@ -1616,9 +1618,11 @@ private[scheduler] class DAGSchedulerEventProcessLoop(dagScheduler: DAGScheduler
       dagScheduler.handleMapStageSubmitted(jobId, dependency, callSite, listener, properties)
 
     case StageCancelled(stageId) =>
+      logInfo(failEventPrefix + "StageCancelled: ID " + stageId)
       dagScheduler.handleStageCancellation(stageId)
 
     case JobCancelled(jobId) =>
+      logInfo(failEventPrefix + "JobCancelled: ID " + jobId)
       dagScheduler.handleJobCancellation(jobId)
 
     case JobGroupCancelled(groupId) =>
@@ -1631,6 +1635,7 @@ private[scheduler] class DAGSchedulerEventProcessLoop(dagScheduler: DAGScheduler
       dagScheduler.handleExecutorAdded(execId, host)
 
     case ExecutorLost(execId, reason) =>
+      logInfo(failEventPrefix + "ExecutorLost: ID " + execId)
       val filesLost = reason match {
         case SlaveLost(_, true) => true
         case _ => false
@@ -1647,6 +1652,7 @@ private[scheduler] class DAGSchedulerEventProcessLoop(dagScheduler: DAGScheduler
       dagScheduler.handleTaskCompletion(completion)
 
     case TaskSetFailed(taskSet, reason, exception) =>
+      logInfo(failEventPrefix + "TaskSetFailed, reason: " + reason)
       dagScheduler.handleTaskSetFailed(taskSet, reason, exception)
 
     case ResubmitFailedStages =>

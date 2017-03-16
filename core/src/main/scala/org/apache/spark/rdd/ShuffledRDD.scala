@@ -47,6 +47,8 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
     part: Partitioner)
   extends RDD[(K, C)](prev.context, Nil) {
 
+  name = "ShuffledRDD"
+
   private var userSpecifiedSerializer: Option[Serializer] = None
 
   private var keyOrdering: Option[Ordering[K]] = None

@@ -81,6 +81,8 @@ class CoGroupedRDD[K: ClassTag](
     part: Partitioner)
   extends RDD[(K, Array[Iterable[_]])](rdds.head.context, Nil) {
 
+  name = "CoGroupedRDD"
+
   // For example, `(k, a) cogroup (k, b)` produces k -> Array(ArrayBuffer as, ArrayBuffer bs).
   // Each ArrayBuffer is represented as a CoGroup, and the resulting Array as a CoGroupCombiner.
   // CoGroupValue is the intermediate state of each value before being merged in compute.

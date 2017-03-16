@@ -44,6 +44,7 @@ import org.apache.spark.util.{BoundedPriorityQueue, Utils}
 import org.apache.spark.util.collection.OpenHashMap
 import org.apache.spark.util.random.{BernoulliCellSampler, BernoulliSampler, PoissonSampler,
   SamplingUtils}
+import org.apache.log4j.{Level, LogManager, PropertyConfigurator}
 
 /**
  * A Resilient Distributed Dataset (RDD), the basic abstraction in Spark. Represents an immutable,
@@ -149,7 +150,7 @@ abstract class RDD[T: ClassTag](
   val id: Int = sc.newRddId()
 
   /** A friendly name for this RDD */
-  @transient var name: String = null
+  var name: String = null
 
   /** Assign a name to this RDD */
   def setName(_name: String): this.type = {
@@ -281,10 +282,25 @@ abstract class RDD[T: ClassTag](
    * subclasses of RDD.
    */
   final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
+    val extra_log = org.apache.log4j.LogManager.getLogger("extraLogger_" + SparkEnv.get.executorId)
+    extra_log.setLevel(Level.INFO)
+    val basicLogComponent = "RDD ID:" + id + ",Name:" + this.name + ",TaskAttempt ID:" +
+      context.taskAttemptId().toString() + ",Partition Id:" + context.partitionId().toString +
+      ",Stage Id:" + context.stageId().toString
     if (storageLevel != StorageLevel.NONE) {
-      getOrCompute(split, context)
+      extra_log.info("[iterator.FromCache]StartAt:" + System.currentTimeMillis().toString + ","
+        + basicLogComponent)
+      val funcret = getOrCompute(split, context)
+      extra_log.info("[iterator.FromCache]EndAt:" + System.currentTimeMillis().toString + ","
+        + basicLogComponent)
+      funcret
     } else {
-      computeOrReadCheckpoint(split, context)
+      extra_log.info("[iterator.FromParent]StartAt:" + System.currentTimeMillis().toString + ","
+        + basicLogComponent)
+      val funcret = computeOrReadCheckpoint(split, context)
+      extra_log.info("[iterator.FromParent]EndAt:" + System.currentTimeMillis().toString + ","
+        + basicLogComponent)
+      funcret
     }
   }
 

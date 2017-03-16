@@ -27,6 +27,8 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.rdd.RDD
 
+import org.apache.log4j.{Level, LogManager, PropertyConfigurator}
+
 /**
  * A task that sends back the output to the driver application.
  *
@@ -84,7 +86,19 @@ private[spark] class ResultTask[T, U](
       threadMXBean.getCurrentThreadCpuTime - deserializeStartCpuTime
     } else 0L
 
-    func(context, rdd.iterator(partition, context))
+    val extra_log = org.apache.log4j.LogManager.getLogger("extraLogger_" + SparkEnv.get.executorId)
+    extra_log.setLevel(Level.INFO)
+    val basicLogComponent = "TaskAttempt ID:" + context.taskAttemptId().toString() +
+      ",Partition Id:" + context.partitionId().toString +
+      ",Stage Id:" + context.stageId().toString
+
+    extra_log.info("[ResultTask]StartAt:" + System.currentTimeMillis().toString + ","
+      + basicLogComponent)
+    val funcRet = func(context, rdd.iterator(partition, context))
+    extra_log.info("[ResultTask]EndAt:" + System.currentTimeMillis().toString + ","
+      + basicLogComponent )
+
+    funcRet
   }
 
   // This is only callable on the driver side.

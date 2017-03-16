@@ -23,6 +23,7 @@ import org.apache.spark.serializer.SerializerManager
 import org.apache.spark.storage.{BlockManager, ShuffleBlockFetcherIterator}
 import org.apache.spark.util.CompletionIterator
 import org.apache.spark.util.collection.ExternalSorter
+import org.apache.log4j.{Level, LogManager, PropertyConfigurator}
 
 /**
  * Fetches and reads the partitions in range [startPartition, endPartition) from a shuffle by
@@ -42,6 +43,21 @@ private[spark] class BlockStoreShuffleReader[K, C](
 
   /** Read the combined key-values for this reduce task */
   override def read(): Iterator[Product2[K, C]] = {
+    val extra_log = org.apache.log4j.LogManager.getLogger("extraLogger_" + SparkEnv.get.executorId)
+    extra_log.setLevel(Level.INFO) ;
+    var basicLogComponent =
+      ",TaskAttempt ID:" + this.context.taskAttemptId() +
+      ",Partition Id:" + this.context.partitionId() +
+      ",Stage Id:" + this.context.stageId() ;
+    if ( dep!=null && dep.rdd!=null){
+      basicLogComponent = dep.rdd.id.toString + basicLogComponent
+    }
+    else {
+      basicLogComponent = "No Dependency" + basicLogComponent
+    }
+    extra_log.info( "[BlockStoreShuffleReader]StartAt:" +
+      System.currentTimeMillis() + "," + basicLogComponent )
+
     val blockFetcherItr = new ShuffleBlockFetcherIterator(
       context,
       blockManager.shuffleClient,
@@ -96,7 +112,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
     }
 
     // Sort the output if there is a sort ordering defined.
-    dep.keyOrdering match {
+    val funcRet = dep.keyOrdering match {
       case Some(keyOrd: Ordering[K]) =>
         // Create an ExternalSorter to sort the data. Note that if spark.shuffle.spill is disabled,
         // the ExternalSorter won't spill to disk.
@@ -110,5 +126,10 @@ private[spark] class BlockStoreShuffleReader[K, C](
       case None =>
         aggregatedIter
     }
+
+    extra_log.info( "[BlockStoreShuffleReader]EndAt:" +
+      System.currentTimeMillis() + "," + basicLogComponent )
+
+    funcRet
   }
 }

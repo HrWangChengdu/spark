@@ -47,6 +47,8 @@ private[spark] class PythonRDD(
     preservePartitoning: Boolean)
   extends RDD[Array[Byte]](parent) {
 
+  name = "PythonRDD"
+
   val bufferSize = conf.getInt("spark.buffer.size", 65536)
   val reuse_worker = conf.getBoolean("spark.python.worker.reuse", true)
 
@@ -384,6 +386,7 @@ private class PythonException(msg: String, cause: Exception) extends RuntimeExce
  * This is used by PySpark's shuffle operations.
  */
 private class PairwiseRDD(prev: RDD[Array[Byte]]) extends RDD[(Long, Array[Byte])](prev) {
+  name = "PairwiseRDD"
   override def getPartitions: Array[Partition] = prev.partitions
   override val partitioner: Option[Partitioner] = prev.partitioner
   override def compute(split: Partition, context: TaskContext): Iterator[(Long, Array[Byte])] =
