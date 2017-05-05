@@ -57,9 +57,6 @@ export SPARK_HISTORY_OPTS="-Dspark.history.fs.logDirectory=file:///users/haoranw
 SPARK_DAEMON_JAVA_OPTS+=" -agentpath:/users/haoranw2/Tools/yourkit/yjp-2017.02/bin/linux-x86-64/libyjpagent.so=sampling"
 export SPARK_DAEMON_JAVA_OPTS
 
-#SPARK_JAVA_OPTS+=" -agentpath:/users/haoranw2/Tools/yourkit/yjp-2017.02/bin/linux-x86-64/libyjpagent.so=sampling"
-#export SPARK_JAVA_OPTS
-
 # - SPARK_SHUFFLE_OPTS, to set config properties only for the external shuffle service (e.g. "-Dx=y")
 # - SPARK_DAEMON_JAVA_OPTS, to set config properties for all daemons (e.g. "-Dx=y")
 # - SPARK_PUBLIC_DNS, to set the public dns name of the master or workers
