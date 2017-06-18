@@ -58,6 +58,9 @@ class NettyBlockRpcServer(
       case openBlocks: OpenBlocks =>
         val blocks: Seq[ManagedBuffer] =
           openBlocks.blockIds.map(BlockId.apply).map(blockManager.getBlockData)
+        var sum: Long = 0
+        blocks.foreach(sum += _.size())
+        logInfo(s"Open Blocks total bytes: $sum")
         val streamId = streamManager.registerStream(appId, blocks.iterator.asJava)
         logTrace(s"Registered streamId $streamId with ${blocks.size} buffers")
         responseContext.onSuccess(new StreamHandle(streamId, blocks.size).toByteBuffer)
@@ -71,6 +74,7 @@ class NettyBlockRpcServer(
             .asInstanceOf[(StorageLevel, ClassTag[_])]
         }
         val data = new NioManagedBuffer(ByteBuffer.wrap(uploadBlock.blockData))
+        logInfo(s"Upload Block total bytes: ${data.size()}")
         val blockId = BlockId(uploadBlock.blockId)
         blockManager.putBlockData(blockId, data, level, classTag)
         responseContext.onSuccess(ByteBuffer.allocate(0))

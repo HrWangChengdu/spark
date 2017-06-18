@@ -993,6 +993,8 @@ class DAGScheduler(
           JavaUtils.bufferToArray(closureSerializer.serialize((stage.rdd, stage.func): AnyRef))
       }
 
+      logInfo("# Bytes of taskBinaryBytes: " + taskBinaryBytes.length + ")")
+
       taskBinary = sc.broadcast(taskBinaryBytes)
     } catch {
       // In the case of a failure during serialization, abort the stage.
