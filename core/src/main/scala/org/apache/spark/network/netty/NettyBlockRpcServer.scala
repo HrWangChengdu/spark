@@ -31,6 +31,7 @@ import org.apache.spark.network.server.{OneForOneStreamManager, RpcHandler, Stre
 import org.apache.spark.network.shuffle.protocol.{BlockTransferMessage, OpenBlocks, StreamHandle, UploadBlock}
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.storage.{BlockId, StorageLevel}
+import org.apache.log4j.LogManager
 
 /**
  * Serves requests to open blocks by simply registering one chunk per block requested.
@@ -60,7 +61,9 @@ class NettyBlockRpcServer(
           openBlocks.blockIds.map(BlockId.apply).map(blockManager.getBlockData)
         var sum: Long = 0
         blocks.foreach(sum += _.size())
-        logInfo(s"Open Blocks total bytes: $sum")
+        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        network_log.info(s"Block sent byte: $sum")
+        logTrace(s"Block sent byte: $sum")
         val streamId = streamManager.registerStream(appId, blocks.iterator.asJava)
         logTrace(s"Registered streamId $streamId with ${blocks.size} buffers")
         responseContext.onSuccess(new StreamHandle(streamId, blocks.size).toByteBuffer)
@@ -74,7 +77,9 @@ class NettyBlockRpcServer(
             .asInstanceOf[(StorageLevel, ClassTag[_])]
         }
         val data = new NioManagedBuffer(ByteBuffer.wrap(uploadBlock.blockData))
-        logInfo(s"Upload Block total bytes: ${data.size()}")
+        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        network_log.info(s"Block received byte: ${data.size()}")
+        logTrace(s"Block received byte: ${data.size()}")
         val blockId = BlockId(uploadBlock.blockId)
         blockManager.putBlockData(blockId, data, level, classTag)
         responseContext.onSuccess(ByteBuffer.allocate(0))

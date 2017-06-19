@@ -32,6 +32,7 @@ import org.apache.spark.scheduler._
 import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages._
 import org.apache.spark.scheduler.cluster.CoarseGrainedSchedulerBackend.ENDPOINT_NAME
 import org.apache.spark.util.{RpcUtils, SerializableBuffer, ThreadUtils, Utils}
+import org.apache.log4j.LogManager
 
 /**
  * A scheduler backend that waits for coarse-grained executors to connect.
@@ -250,7 +251,9 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     private def launchTasks(tasks: Seq[Seq[TaskDescription]]) {
       for (task <- tasks.flatten) {
         val serializedTask = ser.serialize(task)
-        logInfo("# Bytes of serializedTask: " + serializedTask.limit + ")")
+        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        network_log.info("Task sent byte: " + serializedTask.limit)
+        logTrace("Task sent byte: " + serializedTask.limit)
         if (serializedTask.limit >= maxRpcMessageSize) {
           scheduler.taskIdToTaskSetManager.get(task.taskId).foreach { taskSetMgr =>
             try {

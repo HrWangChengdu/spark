@@ -28,6 +28,7 @@ import org.apache.spark.TaskState.TaskState
 import org.apache.spark.internal.Logging
 import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.util.{LongAccumulator, ThreadUtils, Utils}
+import org.apache.log4j.LogManager
 
 /**
  * Runs a thread pool that deserializes and remotely fetches (if necessary) task results.
@@ -61,7 +62,9 @@ private[spark] class TaskResultGetter(sparkEnv: SparkEnv, scheduler: TaskSchedul
     getTaskResultExecutor.execute(new Runnable {
       override def run(): Unit = Utils.logUncaughtExceptions {
         try {
-          logInfo(s"Received Task Result: ${serializedData.limit()} Bytes")
+          val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+          network_log.info(s"Task received byte: ${serializedData.limit()}")
+          logTrace(s"Task received byte: ${serializedData.limit()}")
           val (result, size) = serializer.get().deserialize[TaskResult[_]](serializedData) match {
             case directResult: DirectTaskResult[_] =>
               if (!taskSetManager.canFetchMoreResults(serializedData.limit())) {
