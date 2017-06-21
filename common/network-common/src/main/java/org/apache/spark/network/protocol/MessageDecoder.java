@@ -39,8 +39,10 @@ public final class MessageDecoder extends MessageToMessageDecoder<ByteBuf> {
   @Override
   public void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
     org.apache.log4j.Logger network_log = org.apache.log4j.LogManager.getLogger("networkLogger");
-    network_log.info("Command received byte: " + in.capacity());
-    logger.trace("Command received byte: " + in.capacity());
+    network_log.info("Command received byte: " + in.readableBytes());
+    // Capacity is the wrong method by the framedecoder's code and result
+    //network_log.info("Command received byte: " + in.capacity());
+    logger.trace("Command received byte: " + in.readableBytes());
     Message.Type msgType = Message.Type.decode(in);
     Message decoded = decode(msgType, in);
     assert decoded.type() == msgType;
