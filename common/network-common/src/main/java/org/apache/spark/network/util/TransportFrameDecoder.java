@@ -25,6 +25,7 @@ import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+//import org.apache.log4j.LogManager;
 
 /**
  * A customized frame decoder that allows intercepting raw data.
@@ -61,6 +62,8 @@ public class TransportFrameDecoder extends ChannelInboundHandlerAdapter {
     ByteBuf in = (ByteBuf) data;
     buffers.add(in);
     totalSize += in.readableBytes();
+    //org.apache.log4j.Logger network_log = org.apache.log4j.LogManager.getLogger("networkLogger");
+    //network_log.info("FrameDecoder received byte: " + in.readableBytes());
 
     while (!buffers.isEmpty()) {
       // First, feed the interceptor, and if it's still, active, try again.
