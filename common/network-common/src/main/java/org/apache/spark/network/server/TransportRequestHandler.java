@@ -44,7 +44,6 @@ import org.apache.spark.network.protocol.StreamFailure;
 import org.apache.spark.network.protocol.StreamRequest;
 import org.apache.spark.network.protocol.StreamResponse;
 import static org.apache.spark.network.util.NettyUtils.getRemoteAddress;
-import org.apache.log4j.LogManager;
 
 /**
  * A handler that processes requests from clients and writes chunk data back. Each handler is
@@ -197,9 +196,6 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
         @Override
         public void operationComplete(ChannelFuture future) throws Exception {
           if (future.isSuccess()) {
-            org.apache.log4j.Logger network_log = org.apache.log4j.LogManager.getLogger("networkLogger");
-            network_log.info("Command sent byte: " + result.encodedLength());
-            logger.trace("Command sent byte: " + result.encodedLength());
             logger.trace("Sent result {} to client {}", result, remoteAddress);
           } else {
             logger.error(String.format("Error sending result %s to %s; closing connection",

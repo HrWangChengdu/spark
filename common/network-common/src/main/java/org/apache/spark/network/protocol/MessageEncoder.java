@@ -25,6 +25,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToMessageEncoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.log4j.LogManager;
 
 /**
  * Encoder used by the server side to encode server-to-client responses.
@@ -51,6 +52,9 @@ public final class MessageEncoder extends MessageToMessageEncoder<Message> {
     if (in.body() != null) {
       try {
         bodyLength = in.body().size();
+        org.apache.log4j.Logger network_log = org.apache.log4j.LogManager.getLogger("networkLogger");
+        network_log.info("Command sent byte: " + bodyLength);
+        logger.trace("Command sent byte: " + bodyLength);
         body = in.body().convertToNetty();
         isBodyInFrame = in.isBodyInFrame();
       } catch (Exception e) {
