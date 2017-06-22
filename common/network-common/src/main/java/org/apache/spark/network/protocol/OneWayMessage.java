@@ -22,6 +22,7 @@ import io.netty.buffer.ByteBuf;
 
 import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.buffer.NettyManagedBuffer;
+import org.apache.log4j.LogManager;
 
 /**
  * A RPC that does not expect a reply, which is handled by a remote
@@ -48,6 +49,8 @@ public final class OneWayMessage extends AbstractMessage implements RequestMessa
   public void encode(ByteBuf buf) {
     // See comment in encodedLength().
     buf.writeInt((int) body().size());
+    org.apache.log4j.Logger network_log = org.apache.log4j.LogManager.getLogger("networkLogger");
+    network_log.info("OneWayMessage Command sent byte: " + (buf.readableBytes() + body().size()));
   }
 
   public static OneWayMessage decode(ByteBuf buf) {

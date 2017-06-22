@@ -22,6 +22,7 @@ import io.netty.buffer.ByteBuf;
 
 import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.buffer.NettyManagedBuffer;
+import org.apache.log4j.LogManager;
 
 /** Response to {@link RpcRequest} for a successful RPC. */
 public final class RpcResponse extends AbstractResponseMessage {
@@ -48,6 +49,8 @@ public final class RpcResponse extends AbstractResponseMessage {
     buf.writeLong(requestId);
     // See comment in encodedLength().
     buf.writeInt((int) body().size());
+    org.apache.log4j.Logger network_log = org.apache.log4j.LogManager.getLogger("networkLogger");
+    network_log.info("RPC Command sent byte: " + (buf.readableBytes() + body().size()));
   }
 
   @Override

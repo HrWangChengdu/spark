@@ -21,6 +21,7 @@ import com.google.common.base.Objects;
 import io.netty.buffer.ByteBuf;
 
 import org.apache.spark.network.buffer.ManagedBuffer;
+import org.apache.log4j.LogManager;
 
 /**
  * Response to {@link StreamRequest} when the stream has been successfully opened.
@@ -52,6 +53,8 @@ public final class StreamResponse extends AbstractResponseMessage {
   public void encode(ByteBuf buf) {
     Encoders.Strings.encode(buf, streamId);
     buf.writeLong(byteCount);
+    org.apache.log4j.Logger network_log = org.apache.log4j.LogManager.getLogger("networkLogger");
+    network_log.info("Stream Command sent byte: " + (buf.readableBytes()+ body().size()));
   }
 
   @Override
