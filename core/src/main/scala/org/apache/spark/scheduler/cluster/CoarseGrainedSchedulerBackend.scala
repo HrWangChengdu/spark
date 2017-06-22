@@ -252,6 +252,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
       for (task <- tasks.flatten) {
         val serializedTask = ser.serialize(task)
         val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        //network_log.info("TasPosi sent byte: " + serializedTask.position)
         network_log.info("Task sent byte: " + serializedTask.limit)
         logTrace("Task sent byte: " + serializedTask.limit)
         if (serializedTask.limit >= maxRpcMessageSize) {
