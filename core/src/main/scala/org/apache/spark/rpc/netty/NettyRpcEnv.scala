@@ -39,6 +39,7 @@ import org.apache.spark.network.server._
 import org.apache.spark.rpc._
 import org.apache.spark.serializer.{JavaSerializer, JavaSerializerInstance}
 import org.apache.spark.util.{ThreadUtils, Utils}
+//import org.apache.log4j.LogManager
 
 private[netty] class NettyRpcEnv(
     val conf: SparkConf,
@@ -180,7 +181,9 @@ private[netty] class NettyRpcEnv(
 
   private[netty] def send(message: RequestMessage): Unit = {
     val remoteAddr = message.receiver.address
+    //val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
     if (remoteAddr == address) {
+      //network_log.info("Local message {} " + message)
       // Message to a local RPC endpoint.
       try {
         dispatcher.postOneWayMessage(message)
@@ -189,6 +192,9 @@ private[netty] class NettyRpcEnv(
       }
     } else {
       // Message to a remote RPC endpoint.
+      //val bf = serialize(message)
+      //network_log.info("Remote message {} " + message + " " + bf.limit + " " + bf.capacity)
+      //postToOutbox(message.receiver, OneWayOutboxMessage(bf))
       postToOutbox(message.receiver, OneWayOutboxMessage(serialize(message)))
     }
   }
@@ -224,6 +230,10 @@ private[netty] class NettyRpcEnv(
         }(ThreadUtils.sameThread)
         dispatcher.postLocalMessage(message, p)
       } else {
+        //val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        //val bf = serialize(message)
+        //network_log.info("Ask message {} " + message + " " + bf.limit + " " + bf.capacity)
+        //val rpcMessage = RpcOutboxMessage(bf,
         val rpcMessage = RpcOutboxMessage(serialize(message),
           onFailure,
           (client, response) => onSuccess(deserialize[Any](client, response)))
@@ -509,6 +519,8 @@ private[netty] class NettyRpcEndpointRef(
 
   override def send(message: Any): Unit = {
     require(message != null, "Message is null")
+    //val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+    //network_log.info("RpcEndPointRef call nettyEnv.send")
     nettyEnv.send(RequestMessage(nettyEnv.address, this, message))
   }
 

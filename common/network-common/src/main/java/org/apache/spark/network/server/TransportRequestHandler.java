@@ -45,6 +45,7 @@ import org.apache.spark.network.protocol.StreamRequest;
 import org.apache.spark.network.protocol.StreamResponse;
 import static org.apache.spark.network.util.NettyUtils.getRemoteAddress;
 
+import org.apache.log4j.LogManager;
 /**
  * A handler that processes requests from clients and writes chunk data back. Each handler is
  * attached to a single Netty channel, and keeps track of which streams have been fetched via this
@@ -177,6 +178,8 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
 
   private void processOneWayMessage(OneWayMessage req) {
     try {
+      //org.apache.log4j.Logger network_log = org.apache.log4j.LogManager.getLogger("networkLogger");
+      //network_log.info("Process OnewayMessage byte: " + req.body().size());
       rpcHandler.receive(reverseClient, req.body().nioByteBuffer());
     } catch (Exception e) {
       logger.error("Error while invoking RpcHandler#receive() for one-way message.", e);
