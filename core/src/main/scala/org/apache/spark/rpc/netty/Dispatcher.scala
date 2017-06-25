@@ -114,10 +114,10 @@ private[netty] class Dispatcher(nettyEnv: NettyRpcEnv) extends Logging {
   }
 
   /** Posts a message sent by a remote endpoint. */
-  def postRemoteMessage(message: RequestMessage, callback: RpcResponseCallback): Unit = {
+  def postRemoteMessage(message: RequestMessage, callback: RpcResponseCallback, size: Long): Unit = {
     val rpcCallContext =
       new RemoteNettyRpcCallContext(nettyEnv, callback, message.senderAddress)
-    val rpcMessage = RpcMessage(message.senderAddress, message.content, rpcCallContext)
+    val rpcMessage = RpcMessage(message.senderAddress, message.content, rpcCallContext, size)
     postMessage(message.receiver.name, rpcMessage, (e) => callback.onFailure(e))
   }
 
@@ -125,13 +125,13 @@ private[netty] class Dispatcher(nettyEnv: NettyRpcEnv) extends Logging {
   def postLocalMessage(message: RequestMessage, p: Promise[Any]): Unit = {
     val rpcCallContext =
       new LocalNettyRpcCallContext(message.senderAddress, p)
-    val rpcMessage = RpcMessage(message.senderAddress, message.content, rpcCallContext)
+    val rpcMessage = RpcMessage(message.senderAddress, message.content, rpcCallContext, 0)
     postMessage(message.receiver.name, rpcMessage, (e) => p.tryFailure(e))
   }
 
   /** Posts a one-way message. */
-  def postOneWayMessage(message: RequestMessage): Unit = {
-    postMessage(message.receiver.name, OneWayMessage(message.senderAddress, message.content),
+  def postOneWayMessage(message: RequestMessage, size: Long): Unit = {
+    postMessage(message.receiver.name, OneWayMessage(message.senderAddress, message.content, size),
       (e) => throw e)
   }
 

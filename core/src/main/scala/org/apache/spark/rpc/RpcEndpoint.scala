@@ -51,6 +51,14 @@ private[spark] trait RpcEndpoint {
   val rpcEnv: RpcEnv
 
   /**
+   * Return the (child) class name
+   */
+  final def getName: String = {
+    this.getClass().getName()
+    //this.getClass().getSimpleName()
+  }
+
+  /**
    * The [[RpcEndpointRef]] of this [[RpcEndpoint]]. `self` will become valid when `onStart` is
    * called. And `self` will become `null` when `onStop` is called.
    *

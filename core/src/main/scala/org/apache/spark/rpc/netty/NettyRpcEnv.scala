@@ -186,7 +186,8 @@ private[netty] class NettyRpcEnv(
       //network_log.info("Local message {} " + message)
       // Message to a local RPC endpoint.
       try {
-        dispatcher.postOneWayMessage(message)
+        // Set the size to zero. As it's local message
+        dispatcher.postOneWayMessage(message, 0)
       } catch {
         case e: RpcEnvStoppedException => logWarning(e.getMessage)
       }
@@ -572,14 +573,18 @@ private[netty] class NettyRpcHandler(
       message: ByteBuffer,
       callback: RpcResponseCallback): Unit = {
     val messageToDispatch = internalReceive(client, message)
-    dispatcher.postRemoteMessage(messageToDispatch, callback)
+    // Position and Limit are the same here
+    // val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+    dispatcher.postRemoteMessage(messageToDispatch, callback, message.limit)
   }
 
   override def receive(
       client: TransportClient,
       message: ByteBuffer): Unit = {
     val messageToDispatch = internalReceive(client, message)
-    dispatcher.postOneWayMessage(messageToDispatch)
+    // Position and Limit are the same here
+    // val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+    dispatcher.postOneWayMessage(messageToDispatch, message.limit)
   }
 
   private def internalReceive(client: TransportClient, message: ByteBuffer): RequestMessage = {

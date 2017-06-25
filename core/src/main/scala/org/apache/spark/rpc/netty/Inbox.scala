@@ -24,18 +24,20 @@ import scala.util.control.NonFatal
 import org.apache.spark.SparkException
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcAddress, RpcEndpoint, ThreadSafeRpcEndpoint}
-
+import org.apache.log4j.LogManager
 
 private[netty] sealed trait InboxMessage
 
 private[netty] case class OneWayMessage(
     senderAddress: RpcAddress,
-    content: Any) extends InboxMessage
+    content: Any,
+    bufferSize: Long = 0) extends InboxMessage
 
 private[netty] case class RpcMessage(
     senderAddress: RpcAddress,
     content: Any,
-    context: NettyRpcCallContext) extends InboxMessage
+    context: NettyRpcCallContext,
+    bufferSize: Long = 0) extends InboxMessage
 
 private[netty] case object OnStart extends InboxMessage
 
@@ -100,8 +102,10 @@ private[netty] class Inbox(
     while (true) {
       safelyCall(endpoint) {
         message match {
-          case RpcMessage(_sender, content, context) =>
+          case RpcMessage(_sender, content, context, bufferSize) =>
             try {
+              val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+              network_log.info(endpoint.getName + " recprof size " + bufferSize)
               endpoint.receiveAndReply(context).applyOrElse[Any, Unit](content, { msg =>
                 throw new SparkException(s"Unsupported message $message from ${_sender}")
               })
@@ -113,7 +117,9 @@ private[netty] class Inbox(
                 throw e
             }
 
-          case OneWayMessage(_sender, content) =>
+          case OneWayMessage(_sender, content, bufferSize) =>
+            val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+            network_log.info(endpoint.getName + " recprof size " + bufferSize)
             endpoint.receive.applyOrElse[Any, Unit](content, { msg =>
               throw new SparkException(s"Unsupported message $message from ${_sender}")
             })
