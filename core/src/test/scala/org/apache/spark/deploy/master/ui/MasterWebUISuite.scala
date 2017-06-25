@@ -82,7 +82,7 @@ class MasterWebUISuite extends SparkFunSuite with BeforeAndAfterAll {
     conn.getResponseCode
 
     // Verify that master was asked to kill driver with the correct id
-    verify(masterEndpointRef, times(1)).ask[KillDriverResponse](RequestKillDriver(activeDriverId))
+    verify(masterEndpointRef, times(1)).ask[KillDriverResponse](RequestKillDriver(activeDriverId), this.getClass().getName())
   }
 
   private def convPostDataToString(data: Map[String, String]): String = {

@@ -60,7 +60,7 @@ private[spark] class CoarseGrainedExecutorBackend(
     rpcEnv.asyncSetupEndpointRefByURI(driverUrl).flatMap { ref =>
       // This is a very fast action so we can use "ThreadUtils.sameThread"
       driver = Some(ref)
-      ref.ask[Boolean](RegisterExecutor(executorId, self, hostname, cores, extractLogUrls))
+      ref.ask[Boolean](RegisterExecutor(executorId, self, hostname, cores, extractLogUrls), this.getClass().getName())
     }(ThreadUtils.sameThread).onComplete {
       // This is a very fast action so we can use "ThreadUtils.sameThread"
       case Success(msg) =>
@@ -113,7 +113,7 @@ private[spark] class CoarseGrainedExecutorBackend(
       logInfo("Driver commanded a shutdown")
       // Cannot shutdown here because an ack may need to be sent back to the caller. So send
       // a message to self to actually do the shutdown.
-      self.send(Shutdown)
+      self.send(Shutdown, this.getClass().getName())
 
     case Shutdown =>
       stopping.set(true)
@@ -142,7 +142,7 @@ private[spark] class CoarseGrainedExecutorBackend(
   override def statusUpdate(taskId: Long, state: TaskState, data: ByteBuffer) {
     val msg = StatusUpdate(executorId, taskId, state, data)
     driver match {
-      case Some(driverRef) => driverRef.send(msg)
+      case Some(driverRef) => driverRef.send(msg, this.getClass().getName())
       case None => logWarning(s"Drop $msg because has not yet connected to driver")
     }
   }
@@ -165,7 +165,8 @@ private[spark] class CoarseGrainedExecutorBackend(
 
     if (notifyDriver && driver.nonEmpty) {
       driver.get.ask[Boolean](
-        RemoveExecutor(executorId, new ExecutorLossReason(reason))
+        RemoveExecutor(executorId, new ExecutorLossReason(reason)),
+        this.getClass().getName()
       ).onFailure { case e =>
         logWarning(s"Unable to notify the driver due to " + e.getMessage, e)
       }(ThreadUtils.sameThread)
@@ -203,7 +204,7 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
         new SecurityManager(executorConf),
         clientMode = true)
       val driver = fetcher.setupEndpointRefByURI(driverUrl)
-      val cfg = driver.askWithRetry[SparkAppConfig](RetrieveSparkAppConfig)
+      val cfg = driver.askWithRetry[SparkAppConfig](RetrieveSparkAppConfig, this.getClass().getName())
       val props = cfg.sparkProperties ++ Seq[(String, String)](("spark.app.id", appId))
       fetcher.shutdown()
 

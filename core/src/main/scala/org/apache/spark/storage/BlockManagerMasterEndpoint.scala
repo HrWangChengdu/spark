@@ -155,7 +155,7 @@ class BlockManagerMasterEndpoint(
     val removeMsg = RemoveRdd(rddId)
     Future.sequence(
       blockManagerInfo.values.map { bm =>
-        bm.slaveEndpoint.ask[Int](removeMsg)
+        bm.slaveEndpoint.ask[Int](removeMsg, this.getClass().getName())
       }.toSeq
     )
   }
@@ -165,7 +165,7 @@ class BlockManagerMasterEndpoint(
     val removeMsg = RemoveShuffle(shuffleId)
     Future.sequence(
       blockManagerInfo.values.map { bm =>
-        bm.slaveEndpoint.ask[Boolean](removeMsg)
+        bm.slaveEndpoint.ask[Boolean](removeMsg, this.getClass().getName())
       }.toSeq
     )
   }
@@ -182,7 +182,7 @@ class BlockManagerMasterEndpoint(
     }
     Future.sequence(
       requiredBlockManagers.map { bm =>
-        bm.slaveEndpoint.ask[Int](removeMsg)
+        bm.slaveEndpoint.ask[Int](removeMsg, this.getClass().getName())
       }.toSeq
     )
   }
@@ -237,7 +237,7 @@ class BlockManagerMasterEndpoint(
           // Remove the block from the slave's BlockManager.
           // Doesn't actually wait for a confirmation and the message might get lost.
           // If message loss becomes frequent, we should add retry logic here.
-          blockManager.get.slaveEndpoint.ask[Boolean](RemoveBlock(blockId))
+          blockManager.get.slaveEndpoint.ask[Boolean](RemoveBlock(blockId), this.getClass().getName())
         }
       }
     }
@@ -276,7 +276,7 @@ class BlockManagerMasterEndpoint(
     blockManagerInfo.values.map { info =>
       val blockStatusFuture =
         if (askSlaves) {
-          info.slaveEndpoint.ask[Option[BlockStatus]](getBlockStatus)
+          info.slaveEndpoint.ask[Option[BlockStatus]](getBlockStatus, this.getClass().getName())
         } else {
           Future { info.getStatus(blockId) }
         }
@@ -300,7 +300,7 @@ class BlockManagerMasterEndpoint(
       blockManagerInfo.values.map { info =>
         val future =
           if (askSlaves) {
-            info.slaveEndpoint.ask[Seq[BlockId]](getMatchingBlockIds)
+            info.slaveEndpoint.ask[Seq[BlockId]](getMatchingBlockIds, this.getClass().getName())
           } else {
             Future { info.blocks.asScala.keys.filter(filter).toSeq }
           }

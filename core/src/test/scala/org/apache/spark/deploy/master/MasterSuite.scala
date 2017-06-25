@@ -432,7 +432,7 @@ class MasterSuite extends SparkFunSuite
     val master = makeMaster()
     master.rpcEnv.setupEndpoint(Master.ENDPOINT_NAME, master)
     eventually(timeout(10.seconds)) {
-      val masterState = master.self.askWithRetry[MasterStateResponse](RequestMasterState)
+      val masterState = master.self.askWithRetry[MasterStateResponse](RequestMasterState, this.getClass().getName())
       assert(masterState.status === RecoveryState.ALIVE, "Master is not alive")
     }
 
@@ -448,11 +448,11 @@ class MasterSuite extends SparkFunSuite
     })
 
     master.self.ask(
-      RegisterWorker("1", "localhost", 9999, fakeWorker, 10, 1024, "http://localhost:8080"))
+      RegisterWorker("1", "localhost", 9999, fakeWorker, 10, 1024, "http://localhost:8080"), this.getClass().getName())
     val executors = (0 until 3).map { i =>
       new ExecutorDescription(appId = i.toString, execId = i, 2, ExecutorState.RUNNING)
     }
-    master.self.send(WorkerLatestState("1", executors, driverIds = Seq("0", "1", "2")))
+    master.self.send(WorkerLatestState("1", executors, driverIds = Seq("0", "1", "2")), this.getClass().getName())
 
     eventually(timeout(10.seconds)) {
       assert(killedExecutors.asScala.toList.sorted === List("0" -> 0, "1" -> 1, "2" -> 2))

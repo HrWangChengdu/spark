@@ -138,7 +138,7 @@ private[deploy] class Master(
     }
     checkForWorkerTimeOutTask = forwardMessageThread.scheduleAtFixedRate(new Runnable {
       override def run(): Unit = Utils.tryLogNonFatalError {
-        self.send(CheckForWorkerTimeOut)
+        self.send(CheckForWorkerTimeOut, this.getClass().getName())
       }
     }, 0, WORKER_TIMEOUT_MS, TimeUnit.MILLISECONDS)
 
@@ -200,11 +200,11 @@ private[deploy] class Master(
   }
 
   override def electedLeader() {
-    self.send(ElectedLeader)
+    self.send(ElectedLeader, this.getClass().getName())
   }
 
   override def revokedLeadership() {
-    self.send(RevokedLeadership)
+    self.send(RevokedLeadership, this.getClass().getName())
   }
 
   override def receive: PartialFunction[Any, Unit] = {
@@ -220,7 +220,7 @@ private[deploy] class Master(
         beginRecovery(storedApps, storedDrivers, storedWorkers)
         recoveryCompletionTask = forwardMessageThread.schedule(new Runnable {
           override def run(): Unit = Utils.tryLogNonFatalError {
-            self.send(CompleteRecovery)
+            self.send(CompleteRecovery, this.getClass().getName())
           }
         }, WORKER_TIMEOUT_MS, TimeUnit.MILLISECONDS)
       }
@@ -241,7 +241,7 @@ private[deploy] class Master(
         registerApplication(app)
         logInfo("Registered app " + description.name + " with ID " + app.id)
         persistenceEngine.addApplication(app)
-        driver.send(RegisteredApplication(app.id, self))
+        driver.send(RegisteredApplication(app.id, self), this.getClass().getName())
         schedule()
       }
 
@@ -259,7 +259,7 @@ private[deploy] class Master(
             appInfo.resetRetryCount()
           }
 
-          exec.application.driver.send(ExecutorUpdated(execId, state, message, exitStatus, false))
+          exec.application.driver.send(ExecutorUpdated(execId, state, message, exitStatus, false), this.getClass().getName())
 
           if (ExecutorState.isFinished(state)) {
             // Remove this executor from the worker and app
@@ -307,7 +307,7 @@ private[deploy] class Master(
           if (workers.map(_.id).contains(workerId)) {
             logWarning(s"Got heartbeat from unregistered worker $workerId." +
               " Asking it to re-register.")
-            worker.send(ReconnectWorker(masterUrl))
+            worker.send(ReconnectWorker(masterUrl), this.getClass().getName())
           } else {
             logWarning(s"Got heartbeat from unregistered worker $workerId." +
               " This worker was never registered, so ignoring the heartbeat.")
@@ -361,7 +361,7 @@ private[deploy] class Master(
             }
             if (!executorMatches) {
               // master doesn't recognize this executor. So just tell worker to kill it.
-              worker.endpoint.send(KillExecutor(masterUrl, exec.appId, exec.execId))
+              worker.endpoint.send(KillExecutor(masterUrl, exec.appId, exec.execId), this.getClass().getName())
             }
           }
 
@@ -369,7 +369,7 @@ private[deploy] class Master(
             val driverMatches = worker.drivers.exists { case (id, _) => id == driverId }
             if (!driverMatches) {
               // master doesn't recognize this driver. So just tell worker to kill it.
-              worker.endpoint.send(KillDriver(driverId))
+              worker.endpoint.send(KillDriver(driverId), this.getClass().getName())
             }
           }
         case None =>
@@ -442,13 +442,13 @@ private[deploy] class Master(
           case Some(d) =>
             if (waitingDrivers.contains(d)) {
               waitingDrivers -= d
-              self.send(DriverStateChanged(driverId, DriverState.KILLED, None))
+              self.send(DriverStateChanged(driverId, DriverState.KILLED, None), this.getClass().getName())
             } else {
               // We just notify the worker to kill the driver here. The final bookkeeping occurs
               // on the return path when the worker submits a state change back to the master
               // to notify it that the driver was successfully killed.
               d.worker.foreach { w =>
-                w.endpoint.send(KillDriver(driverId))
+                w.endpoint.send(KillDriver(driverId), this.getClass().getName())
               }
             }
             // TODO: It would be nice for this to be a synchronous response
@@ -514,7 +514,7 @@ private[deploy] class Master(
       try {
         registerApplication(app)
         app.state = ApplicationState.UNKNOWN
-        app.driver.send(MasterChanged(self, masterWebUiUrl))
+        app.driver.send(MasterChanged(self, masterWebUiUrl), this.getClass().getName())
       } catch {
         case e: Exception => logInfo("App " + app.id + " had exception on reconnect")
       }
@@ -531,7 +531,7 @@ private[deploy] class Master(
       try {
         registerWorker(worker)
         worker.state = WorkerState.UNKNOWN
-        worker.endpoint.send(MasterChanged(self, masterWebUiUrl))
+        worker.endpoint.send(MasterChanged(self, masterWebUiUrl), this.getClass().getName())
       } catch {
         case e: Exception => logInfo("Worker " + worker.id + " had exception on reconnect")
       }
@@ -732,9 +732,9 @@ private[deploy] class Master(
     logInfo("Launching executor " + exec.fullId + " on worker " + worker.id)
     worker.addExecutor(exec)
     worker.endpoint.send(LaunchExecutor(masterUrl,
-      exec.application.id, exec.id, exec.application.desc, exec.cores, exec.memory))
+      exec.application.id, exec.id, exec.application.desc, exec.cores, exec.memory), this.getClass().getName())
     exec.application.driver.send(
-      ExecutorAdded(exec.id, worker.id, worker.hostPort, exec.cores, exec.memory))
+      ExecutorAdded(exec.id, worker.id, worker.hostPort, exec.cores, exec.memory), this.getClass().getName())
   }
 
   private def registerWorker(worker: WorkerInfo): Boolean = {
@@ -779,7 +779,7 @@ private[deploy] class Master(
     for (exec <- worker.executors.values) {
       logInfo("Telling app of lost executor: " + exec.id)
       exec.application.driver.send(ExecutorUpdated(
-        exec.id, ExecutorState.LOST, Some("worker lost"), None, workerLost = true))
+        exec.id, ExecutorState.LOST, Some("worker lost"), None, workerLost = true), this.getClass().getName())
       exec.state = ExecutorState.LOST
       exec.application.removeExecutor(exec)
     }
@@ -857,14 +857,14 @@ private[deploy] class Master(
       }
       app.markFinished(state)
       if (state != ApplicationState.FINISHED) {
-        app.driver.send(ApplicationRemoved(state.toString))
+        app.driver.send(ApplicationRemoved(state.toString), this.getClass().getName())
       }
       persistenceEngine.removeApplication(app)
       schedule()
 
       // Tell all workers that the application has finished, so they can clean up any app state.
       workers.foreach { w =>
-        w.endpoint.send(ApplicationFinished(app.id))
+        w.endpoint.send(ApplicationFinished(app.id), this.getClass().getName())
       }
     }
   }
@@ -946,7 +946,7 @@ private[deploy] class Master(
    */
   private def killExecutor(exec: ExecutorDesc): Unit = {
     exec.worker.removeExecutor(exec)
-    exec.worker.endpoint.send(KillExecutor(masterUrl, exec.application.id, exec.id))
+    exec.worker.endpoint.send(KillExecutor(masterUrl, exec.application.id, exec.id), this.getClass().getName())
     exec.state = ExecutorState.KILLED
   }
 
@@ -991,7 +991,7 @@ private[deploy] class Master(
     logInfo("Launching driver " + driver.id + " on worker " + worker.id)
     worker.addDriver(driver)
     driver.worker = Some(worker)
-    worker.endpoint.send(LaunchDriver(driver.id, driver.desc))
+    worker.endpoint.send(LaunchDriver(driver.id, driver.desc), this.getClass().getName())
     driver.state = DriverState.RUNNING
   }
 
@@ -1046,7 +1046,7 @@ private[deploy] object Master extends Logging {
     val rpcEnv = RpcEnv.create(SYSTEM_NAME, host, port, conf, securityMgr)
     val masterEndpoint = rpcEnv.setupEndpoint(ENDPOINT_NAME,
       new Master(rpcEnv, rpcEnv.address, webUiPort, securityMgr, conf))
-    val portsResponse = masterEndpoint.askWithRetry[BoundPortsResponse](BoundPortsRequest)
+    val portsResponse = masterEndpoint.askWithRetry[BoundPortsResponse](BoundPortsRequest, this.getClass().getName())
     (rpcEnv, portsResponse.webUIPort, portsResponse.restPort)
   }
 }

@@ -138,24 +138,24 @@ private[spark] class LocalSchedulerBackend(
   }
 
   override def reviveOffers() {
-    localEndpoint.send(ReviveOffers)
+    localEndpoint.send(ReviveOffers, this.getClass().getName())
   }
 
   override def defaultParallelism(): Int =
     scheduler.conf.getInt("spark.default.parallelism", totalCores)
 
   override def killTask(taskId: Long, executorId: String, interruptThread: Boolean) {
-    localEndpoint.send(KillTask(taskId, interruptThread))
+    localEndpoint.send(KillTask(taskId, interruptThread), this.getClass().getName())
   }
 
   override def statusUpdate(taskId: Long, state: TaskState, serializedData: ByteBuffer) {
-    localEndpoint.send(StatusUpdate(taskId, state, serializedData))
+    localEndpoint.send(StatusUpdate(taskId, state, serializedData), this.getClass().getName())
   }
 
   override def applicationId(): String = appId
 
   private def stop(finalState: SparkAppHandle.State): Unit = {
-    localEndpoint.ask(StopExecutor)
+    localEndpoint.ask(StopExecutor, this.getClass().getName())
     try {
       launcherBackend.setState(finalState)
     } finally {

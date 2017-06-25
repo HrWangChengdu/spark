@@ -171,7 +171,7 @@ class AppClientSuite
 
   /** Get the Master state */
   private def getMasterState: MasterStateResponse = {
-    master.self.askWithRetry[MasterStateResponse](RequestMasterState)
+    master.self.askWithRetry[MasterStateResponse](RequestMasterState, this.getClass().getName())
   }
 
   /** Get the applications that are active from Master */

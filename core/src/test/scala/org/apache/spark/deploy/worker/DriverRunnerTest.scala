@@ -39,7 +39,7 @@ class DriverRunnerTest extends SparkFunSuite {
     val driverDescription = new DriverDescription("jarUrl", 512, 1, true, command)
     val conf = new SparkConf()
     val worker = mock(classOf[RpcEndpointRef])
-    doNothing().when(worker).send(any())
+    doNothing().when(worker).send(any(), this.getClass().getName())
     spy(new DriverRunner(conf, "driverId", new File("workDir"), new File("sparkHome"),
       driverDescription, worker, "spark://1.2.3.4/worker/", new SecurityManager(conf)))
   }

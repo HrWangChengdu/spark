@@ -39,7 +39,7 @@ import org.apache.spark.network.server._
 import org.apache.spark.rpc._
 import org.apache.spark.serializer.{JavaSerializer, JavaSerializerInstance}
 import org.apache.spark.util.{ThreadUtils, Utils}
-//import org.apache.log4j.LogManager
+import org.apache.log4j.LogManager
 
 private[netty] class NettyRpcEnv(
     val conf: SparkConf,
@@ -135,7 +135,7 @@ private[netty] class NettyRpcEnv(
     val endpointRef = new NettyRpcEndpointRef(conf, addr, this)
     val verifier = new NettyRpcEndpointRef(
       conf, RpcEndpointAddress(addr.rpcAddress, RpcEndpointVerifier.NAME), this)
-    verifier.ask[Boolean](RpcEndpointVerifier.CheckExistence(endpointRef.name)).flatMap { find =>
+    verifier.ask[Boolean](RpcEndpointVerifier.CheckExistence(endpointRef.name), this.getClass().getName()).flatMap { find =>
       if (find) {
         Future.successful(endpointRef)
       } else {
@@ -179,9 +179,8 @@ private[netty] class NettyRpcEnv(
     }
   }
 
-  private[netty] def send(message: RequestMessage): Unit = {
+  private[netty] def send(message: RequestMessage, senderType: String): Unit = {
     val remoteAddr = message.receiver.address
-    //val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
     if (remoteAddr == address) {
       //network_log.info("Local message {} " + message)
       // Message to a local RPC endpoint.
@@ -193,10 +192,11 @@ private[netty] class NettyRpcEnv(
       }
     } else {
       // Message to a remote RPC endpoint.
-      //val bf = serialize(message)
-      //network_log.info("Remote message {} " + message + " " + bf.limit + " " + bf.capacity)
-      //postToOutbox(message.receiver, OneWayOutboxMessage(bf))
-      postToOutbox(message.receiver, OneWayOutboxMessage(serialize(message)))
+      val bf = serialize(message)
+      val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+      network_log.info(senderType + " senprof size {} " + bf.limit + " " + bf.capacity)
+      postToOutbox(message.receiver, OneWayOutboxMessage(bf))
+      //postToOutbox(message.receiver, OneWayOutboxMessage(serialize(message)))
     }
   }
 
@@ -204,7 +204,7 @@ private[netty] class NettyRpcEnv(
     clientFactory.createClient(address.host, address.port)
   }
 
-  private[netty] def ask[T: ClassTag](message: RequestMessage, timeout: RpcTimeout): Future[T] = {
+  private[netty] def ask[T: ClassTag](message: RequestMessage, timeout: RpcTimeout, senderType: String): Future[T] = {
     val promise = Promise[Any]()
     val remoteAddr = message.receiver.address
 
@@ -231,11 +231,11 @@ private[netty] class NettyRpcEnv(
         }(ThreadUtils.sameThread)
         dispatcher.postLocalMessage(message, p)
       } else {
-        //val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-        //val bf = serialize(message)
-        //network_log.info("Ask message {} " + message + " " + bf.limit + " " + bf.capacity)
-        //val rpcMessage = RpcOutboxMessage(bf,
-        val rpcMessage = RpcOutboxMessage(serialize(message),
+        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        val bf = serialize(message)
+        network_log.info(senderType + " senproc size {} " + bf.limit + " " + bf.capacity)
+        val rpcMessage = RpcOutboxMessage(bf,
+        //val rpcMessage = RpcOutboxMessage(serialize(message),
           onFailure,
           (client, response) => onSuccess(deserialize[Any](client, response)))
         postToOutbox(message.receiver, rpcMessage)
@@ -514,15 +514,13 @@ private[netty] class NettyRpcEndpointRef(
 
   override def name: String = _name
 
-  override def ask[T: ClassTag](message: Any, timeout: RpcTimeout): Future[T] = {
-    nettyEnv.ask(RequestMessage(nettyEnv.address, this, message), timeout)
+  override def ask[T: ClassTag](message: Any, timeout: RpcTimeout, senderType: String): Future[T] = {
+    nettyEnv.ask(RequestMessage(nettyEnv.address, this, message), timeout, senderType)
   }
 
-  override def send(message: Any): Unit = {
+  override def send(message: Any, senderType: String): Unit = {
     require(message != null, "Message is null")
-    //val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-    //network_log.info("RpcEndPointRef call nettyEnv.send")
-    nettyEnv.send(RequestMessage(nettyEnv.address, this, message))
+    nettyEnv.send(RequestMessage(nettyEnv.address, this, message), senderType)
   }
 
   override def toString: String = s"NettyRpcEndpointRef(${_address})"

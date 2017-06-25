@@ -104,7 +104,7 @@ private[spark] class StandaloneAppClient(
             }
             logInfo("Connecting to master " + masterAddress.toSparkURL + "...")
             val masterRef = rpcEnv.setupEndpointRef(masterAddress, Master.ENDPOINT_NAME)
-            masterRef.send(RegisterApplication(appDescription, self))
+            masterRef.send(RegisterApplication(appDescription, self), this.getClass().getName())
           } catch {
             case ie: InterruptedException => // Cancelled
             case NonFatal(e) => logWarning(s"Failed to connect to master $masterAddress", e)
@@ -143,7 +143,7 @@ private[spark] class StandaloneAppClient(
      */
     private def sendToMaster(message: Any): Unit = {
       master match {
-        case Some(masterRef) => masterRef.send(message)
+        case Some(masterRef) => masterRef.send(message, this.getClass().getName())
         case None => logWarning(s"Drop $message because has not yet connected to master")
       }
     }
@@ -186,7 +186,7 @@ private[spark] class StandaloneAppClient(
         logInfo("Master has changed, new master is at " + masterRef.address.toSparkURL)
         master = Some(masterRef)
         alreadyDisconnected = false
-        masterRef.send(MasterChangeAcknowledged(appId.get))
+        masterRef.send(MasterChangeAcknowledged(appId.get), this.getClass().getName())
     }
 
     override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
@@ -219,7 +219,7 @@ private[spark] class StandaloneAppClient(
         msg: T): Unit = {
       // Ask a message and create a thread to reply with the result.  Allow thread to be
       // interrupted during shutdown, otherwise context must be notified of NonFatal errors.
-      endpointRef.ask[Boolean](msg).andThen {
+      endpointRef.ask[Boolean](msg, this.getClass().getName()).andThen {
         case Success(b) => context.reply(b)
         case Failure(ie: InterruptedException) => // Cancelled
         case Failure(NonFatal(t)) => context.sendFailure(t)
@@ -276,7 +276,7 @@ private[spark] class StandaloneAppClient(
     if (endpoint.get != null) {
       try {
         val timeout = RpcUtils.askRpcTimeout(conf)
-        timeout.awaitResult(endpoint.get.ask[Boolean](StopAppClient))
+        timeout.awaitResult(endpoint.get.ask[Boolean](StopAppClient, this.getClass().getName()))
       } catch {
         case e: TimeoutException =>
           logInfo("Stop request to Master timed out; it may already be shut down.")
@@ -293,7 +293,7 @@ private[spark] class StandaloneAppClient(
    */
   def requestTotalExecutors(requestedTotal: Int): Future[Boolean] = {
     if (endpoint.get != null && appId.get != null) {
-      endpoint.get.ask[Boolean](RequestExecutors(appId.get, requestedTotal))
+      endpoint.get.ask[Boolean](RequestExecutors(appId.get, requestedTotal), this.getClass().getName())
     } else {
       logWarning("Attempted to request executors before driver fully initialized.")
       Future.successful(false)
@@ -306,7 +306,7 @@ private[spark] class StandaloneAppClient(
    */
   def killExecutors(executorIds: Seq[String]): Future[Boolean] = {
     if (endpoint.get != null && appId.get != null) {
-      endpoint.get.ask[Boolean](KillExecutors(appId.get, executorIds))
+      endpoint.get.ask[Boolean](KillExecutors(appId.get, executorIds), this.getClass().getName())
     } else {
       logWarning("Attempted to kill executors before driver fully initialized.")
       Future.successful(false)

@@ -33,7 +33,7 @@ private[ui] class MasterPage(parent: MasterWebUI) extends WebUIPage("") {
   private val master = parent.masterEndpointRef
 
   def getMasterState: MasterStateResponse = {
-    master.askWithRetry[MasterStateResponse](RequestMasterState)
+    master.askWithRetry[MasterStateResponse](RequestMasterState, this.getClass().getName())
   }
 
   override def renderJson(request: HttpServletRequest): JValue = {
@@ -50,7 +50,7 @@ private[ui] class MasterPage(parent: MasterWebUI) extends WebUIPage("") {
 
   def handleDriverKillRequest(request: HttpServletRequest): Unit = {
     handleKillRequest(request, id => {
-      master.ask[KillDriverResponse](RequestKillDriver(id))
+      master.ask[KillDriverResponse](RequestKillDriver(id), this.getClass().getName())
     })
   }
 

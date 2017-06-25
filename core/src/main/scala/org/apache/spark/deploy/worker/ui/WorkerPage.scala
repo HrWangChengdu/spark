@@ -34,12 +34,12 @@ private[ui] class WorkerPage(parent: WorkerWebUI) extends WebUIPage("") {
   private val workerEndpoint = parent.worker.self
 
   override def renderJson(request: HttpServletRequest): JValue = {
-    val workerState = workerEndpoint.askWithRetry[WorkerStateResponse](RequestWorkerState)
+    val workerState = workerEndpoint.askWithRetry[WorkerStateResponse](RequestWorkerState, this.getClass().getName())
     JsonProtocol.writeWorkerState(workerState)
   }
 
   def render(request: HttpServletRequest): Seq[Node] = {
-    val workerState = workerEndpoint.askWithRetry[WorkerStateResponse](RequestWorkerState)
+    val workerState = workerEndpoint.askWithRetry[WorkerStateResponse](RequestWorkerState, this.getClass().getName())
 
     val executorHeaders = Seq("ExecutorID", "Cores", "State", "Memory", "Job Details", "Logs")
     val runningExecutors = workerState.executors

@@ -115,7 +115,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
 
       reviveThread.scheduleAtFixedRate(new Runnable {
         override def run(): Unit = Utils.tryLogNonFatalError {
-          Option(self).foreach(_.send(ReviveOffers))
+          Option(self).foreach(_.send(ReviveOffers, this.getClass().getName()))
         }
       }, 0, reviveIntervalMs, TimeUnit.MILLISECONDS)
     }
@@ -141,7 +141,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
       case KillTask(taskId, executorId, interruptThread) =>
         executorDataMap.get(executorId) match {
           case Some(executorInfo) =>
-            executorInfo.executorEndpoint.send(KillTask(taskId, executorId, interruptThread))
+            executorInfo.executorEndpoint.send(KillTask(taskId, executorId, interruptThread), this.getClass().getName())
           case None =>
             // Ignoring the task kill since the executor is not registered.
             logWarning(s"Attempted to kill task $taskId for unknown executor $executorId.")
@@ -152,7 +152,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
 
       case RegisterExecutor(executorId, executorRef, hostname, cores, logUrls) =>
         if (executorDataMap.contains(executorId)) {
-          executorRef.send(RegisterExecutorFailed("Duplicate executor ID: " + executorId))
+          executorRef.send(RegisterExecutorFailed("Duplicate executor ID: " + executorId), this.getClass().getName())
           context.reply(true)
         } else {
           // If the executor's rpc env is not listening for incoming connections, `hostPort`
@@ -180,7 +180,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
               logDebug(s"Decremented number of pending executors ($numPendingExecutors left)")
             }
           }
-          executorRef.send(RegisteredExecutor)
+          executorRef.send(RegisteredExecutor, this.getClass().getName())
           // Note: some tests expect the reply to come after we put the executor in the map
           context.reply(true)
           listenerBus.post(
@@ -195,7 +195,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
       case StopExecutors =>
         logInfo("Asking each executor to shut down")
         for ((_, executorData) <- executorDataMap) {
-          executorData.executorEndpoint.send(StopExecutor)
+          executorData.executorEndpoint.send(StopExecutor, this.getClass().getName())
         }
         context.reply(true)
 
@@ -203,7 +203,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
         // We will remove the executor's state and cannot restore it. However, the connection
         // between the driver and the executor may be still alive so that the executor won't exit
         // automatically, so try to tell the executor to stop itself. See SPARK-13519.
-        executorDataMap.get(executorId).foreach(_.executorEndpoint.send(StopExecutor))
+        executorDataMap.get(executorId).foreach(_.executorEndpoint.send(StopExecutor, this.getClass().getName()))
         removeExecutor(executorId, reason)
         context.reply(true)
 
@@ -276,7 +276,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
           logDebug(s"Launching task ${task.taskId} on executor id: ${task.executorId} hostname: " +
             s"${executorData.executorHost}.")
 
-          executorData.executorEndpoint.send(LaunchTask(new SerializableBuffer(serializedTask)))
+          executorData.executorEndpoint.send(LaunchTask(new SerializableBuffer(serializedTask)), this.getClass().getName())
         }
       }
     }
@@ -370,7 +370,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     try {
       if (driverEndpoint != null) {
         logInfo("Shutting down all executors")
-        driverEndpoint.askWithRetry[Boolean](StopExecutors)
+        driverEndpoint.askWithRetry[Boolean](StopExecutors, this.getClass().getName())
       }
     } catch {
       case e: Exception =>
@@ -382,7 +382,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     stopExecutors()
     try {
       if (driverEndpoint != null) {
-        driverEndpoint.askWithRetry[Boolean](StopDriver)
+        driverEndpoint.askWithRetry[Boolean](StopDriver, this.getClass().getName())
       }
     } catch {
       case e: Exception =>
@@ -409,11 +409,11 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
   }
 
   override def reviveOffers() {
-    driverEndpoint.send(ReviveOffers)
+    driverEndpoint.send(ReviveOffers, this.getClass().getName())
   }
 
   override def killTask(taskId: Long, executorId: String, interruptThread: Boolean) {
-    driverEndpoint.send(KillTask(taskId, executorId, interruptThread))
+    driverEndpoint.send(KillTask(taskId, executorId, interruptThread), this.getClass().getName())
   }
 
   override def defaultParallelism(): Int = {
@@ -426,7 +426,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
    */
   protected def removeExecutor(executorId: String, reason: ExecutorLossReason): Unit = {
     // Only log the failure since we don't care about the result.
-    driverEndpoint.ask[Boolean](RemoveExecutor(executorId, reason)).onFailure { case t =>
+    driverEndpoint.ask[Boolean](RemoveExecutor(executorId, reason), this.getClass().getName()).onFailure { case t =>
       logError(t.getMessage, t)
     }(ThreadUtils.sameThread)
   }

@@ -107,8 +107,8 @@ private class ClientEndpoint(
    */
   private def ayncSendToMasterAndForwardReply[T: ClassTag](message: Any): Unit = {
     for (masterEndpoint <- masterEndpoints) {
-      masterEndpoint.ask[T](message).onComplete {
-        case Success(v) => self.send(v)
+      masterEndpoint.ask[T](message, this.getClass().getName()).onComplete {
+        case Success(v) => self.send(v, this.getClass().getName())
         case Failure(e) =>
           logWarning(s"Error sending messages to master $masterEndpoint", e)
       }(forwardMessageExecutionContext)
@@ -123,7 +123,7 @@ private class ClientEndpoint(
     Thread.sleep(5000)
     logInfo("... polling master for driver state")
     val statusResponse =
-      activeMasterEndpoint.askWithRetry[DriverStatusResponse](RequestDriverStatus(driverId))
+      activeMasterEndpoint.askWithRetry[DriverStatusResponse](RequestDriverStatus(driverId), this.getClass().getName())
     if (statusResponse.found) {
       logInfo(s"State of $driverId is ${statusResponse.state.get}")
       // Worker node, if present

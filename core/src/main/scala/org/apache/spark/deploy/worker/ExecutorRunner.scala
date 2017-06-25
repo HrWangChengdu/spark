@@ -105,7 +105,7 @@ private[deploy] class ExecutorRunner(
       }
     }
     try {
-      worker.send(ExecutorStateChanged(appId, execId, state, message, exitCode))
+      worker.send(ExecutorStateChanged(appId, execId, state, message, exitCode), this.getClass().getName())
     } catch {
       case e: IllegalStateException => logWarning(e.getMessage(), e)
     }
@@ -181,7 +181,7 @@ private[deploy] class ExecutorRunner(
       val exitCode = process.waitFor()
       state = ExecutorState.EXITED
       val message = "Command exited with code " + exitCode
-      worker.send(ExecutorStateChanged(appId, execId, state, Some(message), Some(exitCode)))
+      worker.send(ExecutorStateChanged(appId, execId, state, Some(message), Some(exitCode)), this.getClass().getName())
     } catch {
       case interrupted: InterruptedException =>
         logInfo("Runner thread for executor " + fullId + " interrupted")

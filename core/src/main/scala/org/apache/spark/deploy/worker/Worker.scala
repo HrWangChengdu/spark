@@ -293,7 +293,7 @@ private[deploy] class Worker(
           registrationRetryTimer = Some(
             forwordMessageScheduler.scheduleAtFixedRate(new Runnable {
               override def run(): Unit = Utils.tryLogNonFatalError {
-                self.send(ReregisterWithMaster)
+                self.send(ReregisterWithMaster, this.getClass().getName())
               }
             }, PROLONGED_REGISTRATION_RETRY_INTERVAL_SECONDS,
               PROLONGED_REGISTRATION_RETRY_INTERVAL_SECONDS,
@@ -329,7 +329,7 @@ private[deploy] class Worker(
         registrationRetryTimer = Some(forwordMessageScheduler.scheduleAtFixedRate(
           new Runnable {
             override def run(): Unit = Utils.tryLogNonFatalError {
-              Option(self).foreach(_.send(ReregisterWithMaster))
+              Option(self).foreach(_.send(ReregisterWithMaster, this.getClass().getName()))
             }
           },
           INITIAL_REGISTRATION_RETRY_INTERVAL_SECONDS,
@@ -343,7 +343,7 @@ private[deploy] class Worker(
 
   private def registerWithMaster(masterEndpoint: RpcEndpointRef): Unit = {
     masterEndpoint.ask[RegisterWorkerResponse](RegisterWorker(
-      workerId, host, port, self, cores, memory, workerWebUiUrl))
+      workerId, host, port, self, cores, memory, workerWebUiUrl), this.getClass().getName())
       .onComplete {
         // This is a very fast action so we can use "ThreadUtils.sameThread"
         case Success(msg) =>
@@ -364,7 +364,7 @@ private[deploy] class Worker(
         changeMaster(masterRef, masterWebUiUrl)
         forwordMessageScheduler.scheduleAtFixedRate(new Runnable {
           override def run(): Unit = Utils.tryLogNonFatalError {
-            self.send(SendHeartbeat)
+            self.send(SendHeartbeat, this.getClass().getName())
           }
         }, 0, HEARTBEAT_MILLIS, TimeUnit.MILLISECONDS)
         if (CLEANUP_ENABLED) {
@@ -372,7 +372,7 @@ private[deploy] class Worker(
             s"Worker cleanup enabled; old application directories will be deleted in: $workDir")
           forwordMessageScheduler.scheduleAtFixedRate(new Runnable {
             override def run(): Unit = Utils.tryLogNonFatalError {
-              self.send(WorkDirCleanup)
+              self.send(WorkDirCleanup, this.getClass().getName())
             }
           }, CLEANUP_INTERVAL_MILLIS, CLEANUP_INTERVAL_MILLIS, TimeUnit.MILLISECONDS)
         }
@@ -380,7 +380,7 @@ private[deploy] class Worker(
         val execs = executors.values.map { e =>
           new ExecutorDescription(e.appId, e.execId, e.cores, e.state)
         }
-        masterRef.send(WorkerLatestState(workerId, execs.toList, drivers.keys.toSeq))
+        masterRef.send(WorkerLatestState(workerId, execs.toList, drivers.keys.toSeq), this.getClass().getName())
 
       case RegisterWorkerFailed(message) =>
         if (!registered) {
@@ -431,7 +431,7 @@ private[deploy] class Worker(
 
       val execs = executors.values.
         map(e => new ExecutorDescription(e.appId, e.execId, e.cores, e.state))
-      masterRef.send(WorkerSchedulerStateResponse(workerId, execs.toList, drivers.keys.toSeq))
+      masterRef.send(WorkerSchedulerStateResponse(workerId, execs.toList, drivers.keys.toSeq), this.getClass().getName())
 
     case ReconnectWorker(masterUrl) =>
       logInfo(s"Master with url $masterUrl requested this worker to reconnect.")
@@ -588,7 +588,7 @@ private[deploy] class Worker(
    */
   private def sendToMaster(message: Any): Unit = {
     master match {
-      case Some(masterRef) => masterRef.send(message)
+      case Some(masterRef) => masterRef.send(message, this.getClass().getName())
       case None =>
         logWarning(
           s"Dropping $message because the connection to master has not yet been established")

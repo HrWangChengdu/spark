@@ -88,7 +88,7 @@ private[spark] class OutputCommitCoordinator(conf: SparkConf, isDriver: Boolean)
     val msg = AskPermissionToCommitOutput(stage, partition, attemptNumber)
     coordinatorRef match {
       case Some(endpointRef) =>
-        endpointRef.askWithRetry[Boolean](msg)
+        endpointRef.askWithRetry[Boolean](msg, this.getClass().getName())
       case None =>
         logError(
           "canCommit called after coordinator was stopped (is SparkEnv shutdown in progress)?")
@@ -145,7 +145,7 @@ private[spark] class OutputCommitCoordinator(conf: SparkConf, isDriver: Boolean)
 
   def stop(): Unit = synchronized {
     if (isDriver) {
-      coordinatorRef.foreach(_ send StopCoordinator)
+      coordinatorRef.foreach(_ send (StopCoordinator, this.getClass().getName()))
       coordinatorRef = None
       authorizedCommittersByStage.clear()
     }

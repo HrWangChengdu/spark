@@ -99,7 +99,7 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
    */
   protected def askTracker[T: ClassTag](message: Any): T = {
     try {
-      trackerEndpoint.askWithRetry[T](message)
+      trackerEndpoint.askWithRetry[T](message, this.getClass().getName())
     } catch {
       case e: Exception =>
         logError("Error communicating with MapOutputTracker", e)

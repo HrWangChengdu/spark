@@ -395,7 +395,7 @@ class BlockManagerSuite extends SparkFunSuite with Matchers with BeforeAndAfterE
     assert(master.getLocations("a1").size == 0, "a1 was not removed from master")
 
     val reregister = !master.driverEndpoint.askWithRetry[Boolean](
-      BlockManagerHeartbeat(store.blockManagerId))
+      BlockManagerHeartbeat(store.blockManagerId), this.getClass().getName())
     assert(reregister == true)
   }
 

@@ -98,7 +98,7 @@ private[spark] class HeartbeatReceiver(sc: SparkContext, clock: Clock)
   override def onStart(): Unit = {
     timeoutCheckingTask = eventLoopThread.scheduleAtFixedRate(new Runnable {
       override def run(): Unit = Utils.tryLogNonFatalError {
-        Option(self).foreach(_.ask[Boolean](ExpireDeadHosts))
+        Option(self).foreach(_.ask[Boolean](ExpireDeadHosts, this.getClass().getName()))
       }
     }, 0, checkTimeoutIntervalMs, TimeUnit.MILLISECONDS)
   }
@@ -156,7 +156,7 @@ private[spark] class HeartbeatReceiver(sc: SparkContext, clock: Clock)
    *         indicate if this operation is successful.
    */
   def addExecutor(executorId: String): Option[Future[Boolean]] = {
-    Option(self).map(_.ask[Boolean](ExecutorRegistered(executorId)))
+    Option(self).map(_.ask[Boolean](ExecutorRegistered(executorId), this.getClass().getName()))
   }
 
   /**
@@ -173,7 +173,7 @@ private[spark] class HeartbeatReceiver(sc: SparkContext, clock: Clock)
    *         indicate if this operation is successful.
    */
   def removeExecutor(executorId: String): Option[Future[Boolean]] = {
-    Option(self).map(_.ask[Boolean](ExecutorRemoved(executorId)))
+    Option(self).map(_.ask[Boolean](ExecutorRemoved(executorId), this.getClass().getName()))
   }
 
   /**

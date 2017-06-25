@@ -502,7 +502,7 @@ class SparkContext(config: SparkConf) extends Logging {
     _schedulerBackend = sched
     _taskScheduler = ts
     _dagScheduler = new DAGScheduler(this)
-    _heartbeatReceiver.ask[Boolean](TaskSchedulerIsSet)
+    _heartbeatReceiver.ask[Boolean](TaskSchedulerIsSet, this.getClass().getName())
 
     // start TaskScheduler after taskScheduler sets DAGScheduler reference in DAGScheduler's
     // constructor
@@ -605,7 +605,7 @@ class SparkContext(config: SparkConf) extends Logging {
         Some(Utils.getThreadDump())
       } else {
         val endpointRef = env.blockManager.master.getExecutorEndpointRef(executorId).get
-        Some(endpointRef.askWithRetry[Array[ThreadStackTrace]](TriggerThreadDump))
+        Some(endpointRef.askWithRetry[Array[ThreadStackTrace]](TriggerThreadDump, this.getClass().getName()))
       }
     } catch {
       case e: Exception =>

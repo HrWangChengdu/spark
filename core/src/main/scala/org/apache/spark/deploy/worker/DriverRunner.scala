@@ -110,7 +110,7 @@ private[deploy] class DriverRunner(
         }
 
         // notify worker of final driver state, possible exception
-        worker.send(DriverStateChanged(driverId, finalState.get, finalException))
+        worker.send(DriverStateChanged(driverId, finalState.get, finalException), this.getClass().getName())
       }
     }.start()
   }

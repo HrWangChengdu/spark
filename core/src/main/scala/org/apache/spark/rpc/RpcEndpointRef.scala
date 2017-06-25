@@ -44,7 +44,7 @@ private[spark] abstract class RpcEndpointRef(conf: SparkConf)
   /**
    * Sends a one-way asynchronous message. Fire-and-forget semantics.
    */
-  def send(message: Any): Unit
+  def send(message: Any, senderType: String): Unit
 
   /**
    * Send a message to the corresponding [[RpcEndpoint.receiveAndReply)]] and return a [[Future]] to
@@ -52,7 +52,7 @@ private[spark] abstract class RpcEndpointRef(conf: SparkConf)
    *
    * This method only sends the message once and never retries.
    */
-  def ask[T: ClassTag](message: Any, timeout: RpcTimeout): Future[T]
+  def ask[T: ClassTag](message: Any, timeout: RpcTimeout, senderType: String): Future[T]
 
   /**
    * Send a message to the corresponding [[RpcEndpoint.receiveAndReply)]] and return a [[Future]] to
@@ -60,7 +60,7 @@ private[spark] abstract class RpcEndpointRef(conf: SparkConf)
    *
    * This method only sends the message once and never retries.
    */
-  def ask[T: ClassTag](message: Any): Future[T] = ask(message, defaultAskTimeout)
+  def ask[T: ClassTag](message: Any, senderType: String): Future[T] = ask(message, defaultAskTimeout, senderType)
 
   /**
    * Send a message to the corresponding [[RpcEndpoint]] and get its result within a default
@@ -75,7 +75,7 @@ private[spark] abstract class RpcEndpointRef(conf: SparkConf)
    * @tparam T type of the reply message
    * @return the reply message from the corresponding [[RpcEndpoint]]
    */
-  def askWithRetry[T: ClassTag](message: Any): T = askWithRetry(message, defaultAskTimeout)
+  def askWithRetry[T: ClassTag](message: Any, senderType: String): T = askWithRetry(message, defaultAskTimeout, senderType)
 
   /**
    * Send a message to the corresponding [[RpcEndpoint.receive]] and get its result within a
@@ -91,14 +91,14 @@ private[spark] abstract class RpcEndpointRef(conf: SparkConf)
    * @tparam T type of the reply message
    * @return the reply message from the corresponding [[RpcEndpoint]]
    */
-  def askWithRetry[T: ClassTag](message: Any, timeout: RpcTimeout): T = {
+  def askWithRetry[T: ClassTag](message: Any, timeout: RpcTimeout, senderType: String): T = {
     // TODO: Consider removing multiple attempts
     var attempts = 0
     var lastException: Exception = null
     while (attempts < maxRetries) {
       attempts += 1
       try {
-        val future = ask[T](message, timeout)
+        val future = ask[T](message, timeout, senderType)
         val result = timeout.awaitResult(future)
         if (result == null) {
           throw new SparkException("RpcEndpoint returned null")

@@ -72,7 +72,7 @@ private[rest] class StandaloneKillRequestServlet(masterEndpoint: RpcEndpointRef,
 
   protected def handleKill(submissionId: String): KillSubmissionResponse = {
     val response = masterEndpoint.askWithRetry[DeployMessages.KillDriverResponse](
-      DeployMessages.RequestKillDriver(submissionId))
+      DeployMessages.RequestKillDriver(submissionId), this.getClass().getName())
     val k = new KillSubmissionResponse
     k.serverSparkVersion = sparkVersion
     k.message = response.message
@@ -90,7 +90,7 @@ private[rest] class StandaloneStatusRequestServlet(masterEndpoint: RpcEndpointRe
 
   protected def handleStatus(submissionId: String): SubmissionStatusResponse = {
     val response = masterEndpoint.askWithRetry[DeployMessages.DriverStatusResponse](
-      DeployMessages.RequestDriverStatus(submissionId))
+      DeployMessages.RequestDriverStatus(submissionId), this.getClass().getName())
     val message = response.exception.map { s"Exception from the cluster:\n" + formatException(_) }
     val d = new SubmissionStatusResponse
     d.serverSparkVersion = sparkVersion
@@ -175,7 +175,7 @@ private[rest] class StandaloneSubmitRequestServlet(
       case submitRequest: CreateSubmissionRequest =>
         val driverDescription = buildDriverDescription(submitRequest)
         val response = masterEndpoint.askWithRetry[DeployMessages.SubmitDriverResponse](
-          DeployMessages.RequestSubmitDriver(driverDescription))
+          DeployMessages.RequestSubmitDriver(driverDescription), this.getClass().getName())
         val submitResponse = new CreateSubmissionResponse
         submitResponse.serverSparkVersion = sparkVersion
         submitResponse.message = response.message
