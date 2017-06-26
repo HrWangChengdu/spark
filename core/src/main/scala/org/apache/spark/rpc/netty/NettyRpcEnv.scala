@@ -194,7 +194,7 @@ private[netty] class NettyRpcEnv(
       // Message to a remote RPC endpoint.
       val bf = serialize(message)
       val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-      network_log.info(senderType + " senprof size {} " + bf.limit + " " + bf.capacity)
+      network_log.info(senderType + " sent breakdown size " + bf.limit)
       postToOutbox(message.receiver, OneWayOutboxMessage(bf))
       //postToOutbox(message.receiver, OneWayOutboxMessage(serialize(message)))
     }
@@ -233,7 +233,7 @@ private[netty] class NettyRpcEnv(
       } else {
         val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
         val bf = serialize(message)
-        network_log.info(senderType + " senproc size {} " + bf.limit + " " + bf.capacity)
+        network_log.info(senderType + " sent breakdown size "  + bf.limit)
         val rpcMessage = RpcOutboxMessage(bf,
         //val rpcMessage = RpcOutboxMessage(serialize(message),
           onFailure,

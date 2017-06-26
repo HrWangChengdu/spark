@@ -105,7 +105,7 @@ private[netty] class Inbox(
           case RpcMessage(_sender, content, context, bufferSize) =>
             try {
               val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-              network_log.info(endpoint.getName + " recprof size " + bufferSize)
+              network_log.info(endpoint.getName + " receive breakdown size " + bufferSize)
               endpoint.receiveAndReply(context).applyOrElse[Any, Unit](content, { msg =>
                 throw new SparkException(s"Unsupported message $message from ${_sender}")
               })
@@ -119,7 +119,7 @@ private[netty] class Inbox(
 
           case OneWayMessage(_sender, content, bufferSize) =>
             val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-            network_log.info(endpoint.getName + " recprof size " + bufferSize)
+            network_log.info(endpoint.getName + " receive breakdown size " + bufferSize)
             endpoint.receive.applyOrElse[Any, Unit](content, { msg =>
               throw new SparkException(s"Unsupported message $message from ${_sender}")
             })
