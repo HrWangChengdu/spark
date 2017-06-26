@@ -25,7 +25,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-//import org.apache.log4j.LogManager;
+import org.apache.log4j.LogManager;
 
 /**
  * Decoder used by the client side to encode server-to-client responses.
@@ -38,9 +38,9 @@ public final class MessageDecoder extends MessageToMessageDecoder<ByteBuf> {
 
   @Override
   public void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
-    //org.apache.log4j.Logger network_log = org.apache.log4j.LogManager.getLogger("networkLogger");
-    //network_log.info("Command received byte: " + in.readableBytes());
+    org.apache.log4j.Logger network_log = org.apache.log4j.LogManager.getLogger("networkLogger");
     logger.trace("Command received byte: " + in.readableBytes());
+    network_log.info("Command received byte: " + in.readableBytes());
     Message.Type msgType = Message.Type.decode(in);
     Message decoded = decode(msgType, in);
     assert decoded.type() == msgType;
