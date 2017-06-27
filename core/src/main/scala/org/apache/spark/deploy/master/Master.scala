@@ -37,6 +37,7 @@ import org.apache.spark.metrics.MetricsSystem
 import org.apache.spark.rpc._
 import org.apache.spark.serializer.{JavaSerializer, Serializer}
 import org.apache.spark.util.{ThreadUtils, Utils}
+import org.apache.log4j.Logger
 
 private[deploy] class Master(
     override val rpcEnv: RpcEnv,
@@ -207,7 +208,7 @@ private[deploy] class Master(
     self.send(RevokedLeadership, this.getClass().getName())
   }
 
-  override def receive: PartialFunction[Any, Unit] = {
+  override def receive(str: String="", logger: Logger=null): PartialFunction[Any, Unit] = {
     case ElectedLeader =>
       val (storedApps, storedDrivers, storedWorkers) = persistenceEngine.readPersistedData(rpcEnv)
       state = if (storedApps.isEmpty && storedDrivers.isEmpty && storedWorkers.isEmpty) {
@@ -385,7 +386,7 @@ private[deploy] class Master(
 
   }
 
-  override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+  override def receiveAndReply(context: RpcCallContext, str: String="", logger: Logger=null): PartialFunction[Any, Unit] = {
     case RegisterWorker(
         id, workerHost, workerPort, workerRef, cores, memory, workerWebUiUrl) =>
       logInfo("Registering worker %s:%d with %d cores, %s RAM".format(

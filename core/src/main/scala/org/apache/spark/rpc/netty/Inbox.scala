@@ -23,6 +23,7 @@ import scala.util.control.NonFatal
 
 import org.apache.spark.SparkException
 import org.apache.spark.internal.Logging
+import org.apache.spark.scheduler.cluster.CoarseGrainedSchedulerBackend
 import org.apache.spark.rpc.{RpcAddress, RpcEndpoint, ThreadSafeRpcEndpoint}
 import org.apache.log4j.LogManager
 
@@ -105,10 +106,17 @@ private[netty] class Inbox(
           case RpcMessage(_sender, content, context, bufferSize) =>
             try {
               val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-              network_log.info(endpoint.getName + " received breakdown size " + bufferSize)
-              endpoint.receiveAndReply(context).applyOrElse[Any, Unit](content, { msg =>
-                throw new SparkException(s"Unsupported message $message from ${_sender}")
-              })
+              if (endpoint.printCategory) {
+                val str: String = endpoint.getName + " received breakdown size " + bufferSize
+                endpoint.receiveAndReply(context, str, network_log).applyOrElse[Any, Unit](content, { msg =>
+                  throw new SparkException(s"Unsupported message $message from ${_sender}")
+                })
+              } else {
+                network_log.info(endpoint.getName + " received breakdown size " + bufferSize)
+                endpoint.receiveAndReply(context).applyOrElse[Any, Unit](content, { msg =>
+                  throw new SparkException(s"Unsupported message $message from ${_sender}")
+                })
+              }
             } catch {
               case NonFatal(e) =>
                 context.sendFailure(e)
@@ -119,10 +127,18 @@ private[netty] class Inbox(
 
           case OneWayMessage(_sender, content, bufferSize) =>
             val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-            network_log.info(endpoint.getName + " received breakdown size " + bufferSize)
-            endpoint.receive.applyOrElse[Any, Unit](content, { msg =>
-              throw new SparkException(s"Unsupported message $message from ${_sender}")
-            })
+
+            if (endpoint.printCategory) {
+              val str: String = endpoint.getName + " received breakdown size " + bufferSize
+              endpoint.receive(str, network_log).applyOrElse[Any, Unit](content, { msg =>
+                throw new SparkException(s"Unsupported message $message from ${_sender}")
+              })
+            } else {
+              network_log.info(endpoint.getName + " received breakdown size " + bufferSize)
+              endpoint.receive().applyOrElse[Any, Unit](content, { msg =>
+                throw new SparkException(s"Unsupported message $message from ${_sender}")
+              })
+            }
 
           case OnStart =>
             endpoint.onStart()

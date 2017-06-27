@@ -39,6 +39,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.metrics.MetricsSystem
 import org.apache.spark.rpc._
 import org.apache.spark.util.{ThreadUtils, Utils}
+import org.apache.log4j.Logger
 
 private[deploy] class Worker(
     override val rpcEnv: RpcEnv,
@@ -393,7 +394,7 @@ private[deploy] class Worker(
     }
   }
 
-  override def receive: PartialFunction[Any, Unit] = synchronized {
+  override def receive(str: String="", logger: Logger=null): PartialFunction[Any, Unit] = synchronized {
     case SendHeartbeat =>
       if (connected) { sendToMaster(Heartbeat(workerId, self)) }
 
@@ -547,7 +548,7 @@ private[deploy] class Worker(
       maybeCleanupApplication(id)
   }
 
-  override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+  override def receiveAndReply(context: RpcCallContext, str: String="", logger: Logger=null): PartialFunction[Any, Unit] = {
     case RequestWorkerState =>
       context.reply(WorkerStateResponse(host, port, workerId, executors.values.toList,
         finishedExecutors.values.toList, drivers.values.toList,

@@ -19,6 +19,7 @@ package org.apache.spark.deploy.worker
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc._
+import org.apache.log4j.Logger
 
 /**
  * Endpoint which connects to a worker process and terminates the JVM if the
@@ -47,7 +48,7 @@ private[spark] class WorkerWatcher(
 
   private def exitNonZero() = if (isTesting) isShutDown = true else System.exit(-1)
 
-  override def receive: PartialFunction[Any, Unit] = {
+  override def receive(str: String="", logger: Logger=null): PartialFunction[Any, Unit] = {
     case e => logWarning(s"Received unexpected message: $e")
   }
 

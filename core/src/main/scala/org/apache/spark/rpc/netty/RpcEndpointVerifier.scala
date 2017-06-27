@@ -18,6 +18,7 @@
 package org.apache.spark.rpc.netty
 
 import org.apache.spark.rpc.{RpcCallContext, RpcEndpoint, RpcEnv}
+import org.apache.log4j.Logger
 
 /**
  * An [[RpcEndpoint]] for remote [[RpcEnv]]s to query if an `RpcEndpoint` exists.
@@ -27,7 +28,7 @@ import org.apache.spark.rpc.{RpcCallContext, RpcEndpoint, RpcEnv}
 private[netty] class RpcEndpointVerifier(override val rpcEnv: RpcEnv, dispatcher: Dispatcher)
   extends RpcEndpoint {
 
-  override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+  override def receiveAndReply(context: RpcCallContext, str: String = "", logger: Logger=null): PartialFunction[Any, Unit] = {
     case RpcEndpointVerifier.CheckExistence(name) => context.reply(dispatcher.verify(name))
   }
 }

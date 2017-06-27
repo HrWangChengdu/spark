@@ -35,6 +35,7 @@ import org.apache.spark.{SecurityManager, SparkConf, SparkFunSuite}
 import org.apache.spark.deploy._
 import org.apache.spark.deploy.DeployMessages._
 import org.apache.spark.rpc.{RpcEndpoint, RpcEnv}
+import org.apache.log4j.Logger
 
 class MasterSuite extends SparkFunSuite
   with Matchers with Eventually with PrivateMethodTester with BeforeAndAfter {
@@ -441,7 +442,7 @@ class MasterSuite extends SparkFunSuite
     val fakeWorker = master.rpcEnv.setupEndpoint("worker", new RpcEndpoint {
       override val rpcEnv: RpcEnv = master.rpcEnv
 
-      override def receive: PartialFunction[Any, Unit] = {
+      override def receive(str: String = "", network_log: Logger=null): PartialFunction[Any, Unit] = {
         case KillExecutor(_, appId, execId) => killedExecutors.add(appId, execId)
         case KillDriver(driverId) => killedDrivers.add(driverId)
       }

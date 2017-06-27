@@ -36,6 +36,7 @@ import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages._
 import org.apache.spark.scheduler.cluster.CoarseGrainedSchedulerBackend
 import org.apache.spark.storage.BlockManagerId
 import org.apache.spark.util.{ManualClock, ThreadUtils}
+import org.apache.log4j.Logger
 
 /**
  * A test suite for the heartbeating behavior between the driver and the executors.
@@ -256,7 +257,7 @@ class HeartbeatReceiverSuite
  */
 private class FakeExecutorEndpoint(override val rpcEnv: RpcEnv) extends RpcEndpoint {
 
-  override def receive: PartialFunction[Any, Unit] = {
+  override def receive(str: String = "", network_log: Logger=null): PartialFunction[Any, Unit] = {
     case _ =>
   }
 }
@@ -290,7 +291,7 @@ private class FakeClusterManager(override val rpcEnv: RpcEnv) extends RpcEndpoin
   def getTargetNumExecutors: Int = targetNumExecutors
   def getExecutorIdsToKill: Set[String] = executorIdsToKill.toSet
 
-  override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+  override def receiveAndReply(context: RpcCallContext, str: String = "", network_log: Logger=null): PartialFunction[Any, Unit] = {
     case RequestExecutors(requestedTotal, _, _) =>
       targetNumExecutors = requestedTotal
       context.reply(true)

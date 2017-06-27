@@ -18,6 +18,7 @@
 package org.apache.spark.rpc
 
 import org.apache.spark.SparkException
+import org.apache.log4j.Logger
 
 /**
  * A factory class to create the [[RpcEnv]]. It must have an empty constructor so that it can be
@@ -59,6 +60,13 @@ private[spark] trait RpcEndpoint {
   }
 
   /**
+   * Print category
+   */
+  def printCategory(): Boolean = {
+    false
+  }
+
+  /**
    * The [[RpcEndpointRef]] of this [[RpcEndpoint]]. `self` will become valid when `onStart` is
    * called. And `self` will become `null` when `onStop` is called.
    *
@@ -74,7 +82,7 @@ private[spark] trait RpcEndpoint {
    * Process messages from [[RpcEndpointRef.send]] or [[RpcCallContext.reply)]]. If receiving a
    * unmatched message, [[SparkException]] will be thrown and sent to `onError`.
    */
-  def receive: PartialFunction[Any, Unit] = {
+  def receive(str: String="", network_log: Logger=null): PartialFunction[Any, Unit] = {
     case _ => throw new SparkException(self + " does not implement 'receive'")
   }
 
@@ -82,7 +90,7 @@ private[spark] trait RpcEndpoint {
    * Process messages from [[RpcEndpointRef.ask]]. If receiving a unmatched message,
    * [[SparkException]] will be thrown and sent to `onError`.
    */
-  def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+  def receiveAndReply(context: RpcCallContext, str: String="", network_log: Logger=null): PartialFunction[Any, Unit] = {
     case _ => context.sendFailure(new SparkException(self + " won't reply anything"))
   }
 

@@ -27,6 +27,7 @@ import org.apache.spark.rpc.{RpcCallContext, RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
 import org.apache.spark.storage.BlockManagerId
 import org.apache.spark.util._
+import org.apache.log4j.Logger
 
 /**
  * A heartbeat from executors to the driver. This is a shared message used by several internal
@@ -103,7 +104,7 @@ private[spark] class HeartbeatReceiver(sc: SparkContext, clock: Clock)
     }, 0, checkTimeoutIntervalMs, TimeUnit.MILLISECONDS)
   }
 
-  override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+  override def receiveAndReply(context: RpcCallContext, str: String="", logger: Logger=null): PartialFunction[Any, Unit] = {
 
     // Messages sent and received locally
     case ExecutorRegistered(executorId) =>

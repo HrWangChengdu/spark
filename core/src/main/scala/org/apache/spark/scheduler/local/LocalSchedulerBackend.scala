@@ -29,6 +29,7 @@ import org.apache.spark.launcher.{LauncherBackend, SparkAppHandle}
 import org.apache.spark.rpc.{RpcCallContext, RpcEndpointRef, RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
 import org.apache.spark.scheduler.cluster.ExecutorInfo
+import org.apache.log4j.Logger
 
 private case class ReviveOffers()
 
@@ -59,7 +60,14 @@ private[spark] class LocalEndpoint(
   private val executor = new Executor(
     localExecutorId, localExecutorHostname, SparkEnv.get, userClassPath, isLocal = true)
 
-  override def receive: PartialFunction[Any, Unit] = {
+  /**
+   * Print category
+   */
+  override def printCategory(): Boolean = {
+    true
+  }
+
+  override def receive(str: String="", logger: Logger=null): PartialFunction[Any, Unit] = {
     case ReviveOffers =>
       reviveOffers()
 
@@ -74,7 +82,7 @@ private[spark] class LocalEndpoint(
       executor.killTask(taskId, interruptThread)
   }
 
-  override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+  override def receiveAndReply(context: RpcCallContext, str: String="", logger: Logger=null): PartialFunction[Any, Unit] = {
     case StopExecutor =>
       executor.stop()
       context.reply(true)

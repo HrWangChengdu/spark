@@ -34,6 +34,7 @@ import org.apache.spark.deploy.DeployMessages._
 import org.apache.spark.deploy.master.DriverState._
 import org.apache.spark.rpc._
 import org.apache.spark.util.Utils
+import org.apache.log4j.Logger
 
 /**
  * Tests for the REST application submission protocol used in standalone cluster mode.
@@ -530,7 +531,7 @@ private class DummyMaster(
     exception: Option[Exception] = None)
   extends RpcEndpoint {
 
-  override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+  override def receiveAndReply(context: RpcCallContext, str: String = "", network_log: Logger=null): PartialFunction[Any, Unit] = {
     case RequestSubmitDriver(driverDesc) =>
       context.reply(SubmitDriverResponse(self, success = true, Some(submitId), submitMessage))
     case RequestKillDriver(driverId) =>
@@ -553,7 +554,7 @@ private class SmarterMaster(override val rpcEnv: RpcEnv) extends ThreadSafeRpcEn
   private var counter: Int = 0
   private val submittedDrivers = new mutable.HashMap[String, DriverState]
 
-  override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+  override def receiveAndReply(context: RpcCallContext, str: String = "", network_log: Logger=null): PartialFunction[Any, Unit] = {
     case RequestSubmitDriver(driverDesc) =>
       val driverId = s"driver-$counter"
       submittedDrivers(driverId) = RUNNING

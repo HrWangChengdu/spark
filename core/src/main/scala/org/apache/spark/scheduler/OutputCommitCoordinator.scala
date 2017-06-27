@@ -22,6 +22,7 @@ import scala.collection.mutable
 import org.apache.spark._
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcCallContext, RpcEndpoint, RpcEndpointRef, RpcEnv}
+import org.apache.log4j.Logger
 
 private sealed trait OutputCommitCoordinationMessage extends Serializable
 
@@ -186,13 +187,13 @@ private[spark] object OutputCommitCoordinator {
 
     logDebug("init") // force eager creation of logger
 
-    override def receive: PartialFunction[Any, Unit] = {
+    override def receive(str: String="", logger: Logger=null): PartialFunction[Any, Unit] = {
       case StopCoordinator =>
         logInfo("OutputCommitCoordinator stopped!")
         stop()
     }
 
-    override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+    override def receiveAndReply(context: RpcCallContext, str: String="", logger: Logger=null): PartialFunction[Any, Unit] = {
       case AskPermissionToCommitOutput(stage, partition, attemptNumber) =>
         context.reply(
           outputCommitCoordinator.handleAskPermissionToCommit(stage, partition, attemptNumber))

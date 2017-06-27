@@ -33,6 +33,7 @@ import org.apache.spark.scheduler.MapStatus
 import org.apache.spark.shuffle.MetadataFetchFailedException
 import org.apache.spark.storage.{BlockId, BlockManagerId, ShuffleBlockId}
 import org.apache.spark.util._
+import org.apache.log4j.Logger
 
 private[spark] sealed trait MapOutputTrackerMessage
 private[spark] case class GetMapOutputStatuses(shuffleId: Int)
@@ -48,7 +49,7 @@ private[spark] class MapOutputTrackerMasterEndpoint(
 
   logDebug("init") // force eager creation of logger
 
-  override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+  override def receiveAndReply(context: RpcCallContext, str: String = "", logger: Logger=null): PartialFunction[Any, Unit] = {
     case GetMapOutputStatuses(shuffleId: Int) =>
       val hostPort = context.senderAddress.hostPort
       logInfo("Asked to send map output locations for shuffle " + shuffleId + " to " + hostPort)

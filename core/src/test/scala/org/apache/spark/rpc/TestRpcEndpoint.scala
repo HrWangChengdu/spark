@@ -20,6 +20,7 @@ package org.apache.spark.rpc
 import scala.collection.mutable.ArrayBuffer
 
 import org.scalactic.TripleEquals
+import org.apache.log4j.Logger
 
 class TestRpcEndpoint extends ThreadSafeRpcEndpoint with TripleEquals {
 
@@ -39,11 +40,11 @@ class TestRpcEndpoint extends ThreadSafeRpcEndpoint with TripleEquals {
 
   @volatile private var stopped = false
 
-  override def receive: PartialFunction[Any, Unit] = {
+  override def receive(str: String = "", network_log: Logger=null): PartialFunction[Any, Unit] = {
     case message: Any => receiveMessages += message
   }
 
-  override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+  override def receiveAndReply(context: RpcCallContext, str: String = "", network_log: Logger=null): PartialFunction[Any, Unit] = {
     case message: Any => receiveAndReplyMessages += message
   }
 

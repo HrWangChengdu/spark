@@ -32,6 +32,7 @@ import org.apache.spark.deploy.master.Master
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc._
 import org.apache.spark.util.{RpcUtils, ThreadUtils}
+import org.apache.log4j.Logger
 
 /**
  * Interface allowing applications to speak with a Spark standalone cluster manager.
@@ -152,7 +153,7 @@ private[spark] class StandaloneAppClient(
       masterRpcAddresses.contains(remoteAddress)
     }
 
-    override def receive: PartialFunction[Any, Unit] = {
+    override def receive(str: String="", logger: Logger=null): PartialFunction[Any, Unit] = {
       case RegisteredApplication(appId_, masterRef) =>
         // FIXME How to handle the following cases?
         // 1. A master receives multiple registrations and sends back multiple
@@ -189,7 +190,7 @@ private[spark] class StandaloneAppClient(
         masterRef.send(MasterChangeAcknowledged(appId.get), this.getClass().getName())
     }
 
-    override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+    override def receiveAndReply(context: RpcCallContext, str: String="", logger: Logger=null): PartialFunction[Any, Unit] = {
       case StopAppClient =>
         markDead("Application has been stopped.")
         sendToMaster(UnregisterApplication(appId.get))

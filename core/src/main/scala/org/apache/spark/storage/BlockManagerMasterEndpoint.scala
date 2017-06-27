@@ -30,6 +30,7 @@ import org.apache.spark.rpc.{RpcCallContext, RpcEndpointRef, RpcEnv, ThreadSafeR
 import org.apache.spark.scheduler._
 import org.apache.spark.storage.BlockManagerMessages._
 import org.apache.spark.util.{ThreadUtils, Utils}
+import org.apache.log4j.Logger
 
 /**
  * BlockManagerMasterEndpoint is an [[ThreadSafeRpcEndpoint]] on the master node to track statuses
@@ -67,64 +68,89 @@ class BlockManagerMasterEndpoint(
 
   logInfo("BlockManagerMasterEndpoint up")
 
-  override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+  /**
+   * Print category
+   */
+  override def printCategory(): Boolean = {
+    true
+  }
+
+  override def receiveAndReply(context: RpcCallContext, str: String="", network_log: Logger=null): PartialFunction[Any, Unit] = {
     case RegisterBlockManager(blockManagerId, maxMemSize, slaveEndpoint) =>
+      network_log.info(str + " category:RegisterBlockManager")
       context.reply(register(blockManagerId, maxMemSize, slaveEndpoint))
 
     case _updateBlockInfo @
         UpdateBlockInfo(blockManagerId, blockId, storageLevel, deserializedSize, size) =>
+      network_log.info(str + " category:UpdateBlockInfo")
       context.reply(updateBlockInfo(blockManagerId, blockId, storageLevel, deserializedSize, size))
       listenerBus.post(SparkListenerBlockUpdated(BlockUpdatedInfo(_updateBlockInfo)))
 
     case GetLocations(blockId) =>
+      network_log.info(str + " category:GetLocations")
       context.reply(getLocations(blockId))
 
     case GetLocationsMultipleBlockIds(blockIds) =>
+      network_log.info(str + " category:GetLocationsMultipleBlockIds")
       context.reply(getLocationsMultipleBlockIds(blockIds))
 
     case GetPeers(blockManagerId) =>
+      network_log.info(str + " category:GetPeers")
       context.reply(getPeers(blockManagerId))
 
     case GetExecutorEndpointRef(executorId) =>
+      network_log.info(str + " category:GetExecutorEndpointRef")
       context.reply(getExecutorEndpointRef(executorId))
 
     case GetMemoryStatus =>
+      network_log.info(str + " category:GetMemoryStatus")
       context.reply(memoryStatus)
 
     case GetStorageStatus =>
+      network_log.info(str + " category:GetStorageStatus")
       context.reply(storageStatus)
 
     case GetBlockStatus(blockId, askSlaves) =>
+      network_log.info(str + " category:GetBlockStatus")
       context.reply(blockStatus(blockId, askSlaves))
 
     case GetMatchingBlockIds(filter, askSlaves) =>
+      network_log.info(str + " category:GetMatchingBlockIds")
       context.reply(getMatchingBlockIds(filter, askSlaves))
 
     case RemoveRdd(rddId) =>
+      network_log.info(str + " category:RemoveRdd")
       context.reply(removeRdd(rddId))
 
     case RemoveShuffle(shuffleId) =>
+      network_log.info(str + " category:RemoveShuffle")
       context.reply(removeShuffle(shuffleId))
 
     case RemoveBroadcast(broadcastId, removeFromDriver) =>
+      network_log.info(str + " category:RemoveBroadcast")
       context.reply(removeBroadcast(broadcastId, removeFromDriver))
 
     case RemoveBlock(blockId) =>
+      network_log.info(str + " category:RemoveBlock")
       removeBlockFromWorkers(blockId)
       context.reply(true)
 
     case RemoveExecutor(execId) =>
+      network_log.info(str + " category:RemoveExecutor")
       removeExecutor(execId)
       context.reply(true)
 
     case StopBlockManagerMaster =>
+      network_log.info(str + " category:StopBlockManagerMaster")
       context.reply(true)
       stop()
 
     case BlockManagerHeartbeat(blockManagerId) =>
+      network_log.info(str + " category:BlockManagerHeartbeat")
       context.reply(heartbeatReceived(blockManagerId))
 
     case HasCachedBlocks(executorId) =>
+      network_log.info(str + " category:HasCachedBlocks")
       blockManagerIdByExecutor.get(executorId) match {
         case Some(bm) =>
           if (blockManagerInfo.contains(bm)) {
