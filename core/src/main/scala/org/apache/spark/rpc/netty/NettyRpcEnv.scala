@@ -40,6 +40,7 @@ import org.apache.spark.rpc._
 import org.apache.spark.serializer.{JavaSerializer, JavaSerializerInstance}
 import org.apache.spark.util.{ThreadUtils, Utils}
 import org.apache.log4j.LogManager
+import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages.StatusUpdate
 
 private[netty] class NettyRpcEnv(
     val conf: SparkConf,
@@ -582,6 +583,26 @@ private[netty] class NettyRpcHandler(
     val messageToDispatch = internalReceive(client, message)
     // Position and Limit are the same here
     // val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+    val name_size = nettyEnv.serialize(messageToDispatch.receiver.name).limit
+    // network_log.trace(s"""TempLog: NettyRpcHandler message size ${message.limit},
+    //  content ${nettyEnv.serialize(messageToDispatch.content).limit},
+    //  address size ${nettyEnv.serialize(messageToDispatch.senderAddress).limit},
+    //  receiver name size ${name_size},
+    //  receiver size ${nettyEnv.serialize(messageToDispatch.receiver).limit}""")
+    if (messageToDispatch.content.isInstanceOf[StatusUpdate]) {
+      val stateUpdate = messageToDispatch.content.asInstanceOf[StatusUpdate]
+      val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+      network_log.info(
+s"""TempLog: SU totalMessage ${message.limit}
+TempLog: SU address ${nettyEnv.serialize(messageToDispatch.senderAddress).limit}
+TempLog: SU receiver ${nettyEnv.serialize(messageToDispatch.receiver).limit}
+TempLog: SU receiverName ${name_size}
+TempLog: SU content ${nettyEnv.serialize(messageToDispatch.content).limit}
+TempLog: SU exeId ${nettyEnv.serialize(stateUpdate.executorId).limit}
+TempLog: SU taskId ${nettyEnv.serialize(stateUpdate.taskId).limit}
+TempLog: SU state ${nettyEnv.serialize(stateUpdate.state).limit}
+TempLog: SU data ${nettyEnv.serialize(stateUpdate.data).limit}""")
+    }
     dispatcher.postOneWayMessage(messageToDispatch, message.limit)
   }
 
