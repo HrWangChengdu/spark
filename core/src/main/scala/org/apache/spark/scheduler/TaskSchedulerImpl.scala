@@ -35,6 +35,7 @@ import org.apache.spark.scheduler.TaskLocality.TaskLocality
 import org.apache.spark.scheduler.local.LocalSchedulerBackend
 import org.apache.spark.storage.BlockManagerId
 import org.apache.spark.util.{AccumulatorV2, ThreadUtils, Utils}
+// import org.apache.spark.serializer.{JavaSerializer, JavaSerializerInstance}
 
 /**
  * Schedules tasks for multiple types of clusters by acting through a SchedulerBackend.
@@ -351,6 +352,9 @@ private[spark] class TaskSchedulerImpl(
     var reason: Option[ExecutorLossReason] = None
     synchronized {
       try {
+        // val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        // val ser = SparkEnv.get.closureSerializer.newInstance()
+        // network_log.trace(s"TempLog: TaskSchedulerImpl data size ${serializedData.limit}")
         taskIdToTaskSetManager.get(tid) match {
           case Some(taskSet) =>
             if (state == TaskState.LOST) {
@@ -358,6 +362,8 @@ private[spark] class TaskSchedulerImpl(
               // where each executor corresponds to a single task, so mark the executor as failed.
               val execId = taskIdToExecutorId.getOrElse(tid, throw new IllegalStateException(
                 "taskIdToTaskSetManager.contains(tid) <=> taskIdToExecutorId.contains(tid)"))
+              // val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+              // network_log.trace(s"TempLog: TaskSchedulerImpl TaskState.LOST ${serializedData.limit}")
               if (executorIdToRunningTaskIds.contains(execId)) {
                 reason = Some(
                   SlaveLost(s"Task $tid was lost, so marking the executor as lost as well."))
@@ -368,13 +374,18 @@ private[spark] class TaskSchedulerImpl(
             if (TaskState.isFinished(state)) {
               cleanupTaskState(tid)
               taskSet.removeRunningTask(tid)
+              // val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
               if (state == TaskState.FINISHED) {
+                // network_log.trace(s"TempLog: TaskSchedulerImpl TaskState.FINISHED ${serializedData.limit}")
                 taskResultGetter.enqueueSuccessfulTask(taskSet, tid, serializedData)
               } else if (Set(TaskState.FAILED, TaskState.KILLED, TaskState.LOST).contains(state)) {
+                // network_log.trace(s"TempLog: TaskSchedulerImpl TaskState.UNFINISHED ${serializedData.limit}")
                 taskResultGetter.enqueueFailedTask(taskSet, tid, state, serializedData)
               }
             }
           case None =>
+            // val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+            // network_log.trace(s"TempLog: TaskSchedulerImpl NoneTask ${serializedData.limit}")
             logError(
               ("Ignoring update with state %s for TID %s because its task set is gone (this is " +
                 "likely the result of receiving duplicate task finished status updates) or its " +
