@@ -44,6 +44,7 @@ import org.apache.spark.storage.memory._
 import org.apache.spark.unsafe.Platform
 import org.apache.spark.util._
 import org.apache.spark.util.io.ChunkedByteBuffer
+// import org.apache.log4j.LogManager
 
 
 /* Class for returning a fetched block and associated metrics. */
@@ -299,8 +300,12 @@ private[spark] class BlockManager(
    */
   override def getBlockData(blockId: BlockId): ManagedBuffer = {
     if (blockId.isShuffle) {
+      // val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+      // network_log.trace(s"TempLog: BlockManager Get Block Data shuffle")
       shuffleManager.shuffleBlockResolver.getBlockData(blockId.asInstanceOf[ShuffleBlockId])
     } else {
+      // val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+      // network_log.trace(s"TempLog: BlockManager Get Block Data Local")
       getLocalBytes(blockId) match {
         case Some(buffer) => new BlockManagerManagedBuffer(blockInfoManager, blockId, buffer)
         case None =>
@@ -321,6 +326,8 @@ private[spark] class BlockManager(
       data: ManagedBuffer,
       level: StorageLevel,
       classTag: ClassTag[_]): Boolean = {
+    // val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+    // network_log.info(s"TempLog: put Block Data Local")
     putBytes(blockId, new ChunkedByteBuffer(data.nioByteBuffer()), level)(classTag)
   }
 
