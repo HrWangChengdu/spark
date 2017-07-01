@@ -371,6 +371,7 @@ private[spark] class TaskSchedulerImpl(
                 failedExecutor = Some(execId)
               }
             }
+            // val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
             if (TaskState.isFinished(state)) {
               cleanupTaskState(tid)
               taskSet.removeRunningTask(tid)
