@@ -44,7 +44,6 @@ private[spark] class BlockStoreShuffleReader[K, C](
   /** Read the combined key-values for this reduce task */
   override def read(): Iterator[Product2[K, C]] = {
     val extra_log = org.apache.log4j.LogManager.getLogger("extraLogger_" + SparkEnv.get.executorId)
-    extra_log.setLevel(Level.INFO) ;
     var basicLogComponent =
       ",TaskAttempt ID:" + this.context.taskAttemptId() +
       ",Partition Id:" + this.context.partitionId() +

@@ -51,7 +51,6 @@ private[spark] class SortShuffleWriter[K, V, C](
   /** Write a bunch of records to this task's output */
   override def write(records: Iterator[Product2[K, V]]): Unit = {
     val extra_log = org.apache.log4j.LogManager.getLogger("extraLogger_" + SparkEnv.get.executorId)
-    extra_log.setLevel(Level.INFO)
     val basicLogComponent = "TaskAttempt ID:" + context.taskAttemptId().toString() +
       ",Partition Id:" + context.partitionId().toString +
       ",Stage Id:" + context.stageId().toString

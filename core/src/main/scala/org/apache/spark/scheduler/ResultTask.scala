@@ -87,7 +87,6 @@ private[spark] class ResultTask[T, U](
     } else 0L
 
     val extra_log = org.apache.log4j.LogManager.getLogger("extraLogger_" + SparkEnv.get.executorId)
-    extra_log.setLevel(Level.INFO)
     val basicLogComponent = "TaskAttempt ID:" + context.taskAttemptId().toString() +
       ",Partition Id:" + context.partitionId().toString +
       ",Stage Id:" + context.stageId().toString

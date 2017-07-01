@@ -129,7 +129,6 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     assert (partitionWriters == null);
 
     org.apache.log4j.Logger extra_log = org.apache.log4j.LogManager.getLogger("extraLogger_" + SparkEnv.get().executorId());
-    extra_log.setLevel(Level.INFO) ;
     String basicLogComponent = "Shuffle ID:" + this.shuffleId +
             ",TaskAttempt ID:" + this.taskContext.taskAttemptId() +
             ",Partition Id:" + this.taskContext.partitionId() +
