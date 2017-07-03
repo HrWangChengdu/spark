@@ -195,6 +195,15 @@ private[netty] class NettyRpcEnv(
       // Message to a remote RPC endpoint.
       val bf = serialize(message)
       val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+      if (senderType.endsWith("category:LaunchTask")) {
+        val recSize = serialize(message.receiver).limit
+        val recNameSize = serialize(message.receiver.name).limit
+        val addressSize = serialize(message.senderAddress).limit
+        network_log.info(s"TempLog: TaskSent messageSize ${bf.limit}")
+        network_log.info(s"TempLog: TaskSent receiverSize $recSize")
+        network_log.info(s"TempLog: TaskSent receiverNameSize $recNameSize")
+        network_log.info(s"TempLog: TaskSent senderAddressSize $addressSize")
+      }
       network_log.info(senderType + " sent breakdown size " + bf.limit)
       postToOutbox(message.receiver, OneWayOutboxMessage(bf))
       //postToOutbox(message.receiver, OneWayOutboxMessage(serialize(message)))
@@ -232,8 +241,17 @@ private[netty] class NettyRpcEnv(
         }(ThreadUtils.sameThread)
         dispatcher.postLocalMessage(message, p)
       } else {
-        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
         val bf = serialize(message)
+        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        if (senderType.endsWith("category:LaunchTask")) {
+          val recSize = serialize(message.receiver).limit
+          val recNameSize = serialize(message.receiver.name).limit
+          val addressSize = serialize(message.senderAddress).limit
+          network_log.info(s"TempLog: TaskSent messageSize ${bf.limit}")
+          network_log.info(s"TempLog: TaskSent receiverSize $recSize")
+          network_log.info(s"TempLog: TaskSent receiverNameSize $recNameSize")
+          network_log.info(s"TempLog: TaskSent senderAddressSize $addressSize")
+        }
         network_log.info(senderType + " sent breakdown size "  + bf.limit)
         val rpcMessage = RpcOutboxMessage(bf,
         //val rpcMessage = RpcOutboxMessage(serialize(message),

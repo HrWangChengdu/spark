@@ -55,8 +55,8 @@ import org.apache.log4j.{Level, LogManager, PropertyConfigurator}
 private[spark] class ShuffleMapTask(
     stageId: Int,
     stageAttemptId: Int,
-    taskBinary: Broadcast[Array[Byte]],
-    partition: Partition,
+    val taskBinary: Broadcast[Array[Byte]],
+    val partition: Partition,
     @transient private var locs: Seq[TaskLocation],
     metrics: TaskMetrics,
     localProperties: Properties,

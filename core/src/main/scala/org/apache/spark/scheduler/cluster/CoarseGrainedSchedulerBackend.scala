@@ -265,8 +265,21 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     // Launch tasks returned by a set of resource offers
     private def launchTasks(tasks: Seq[Seq[TaskDescription]]) {
       for (task <- tasks.flatten) {
-        val serializedTask = ser.serialize(task)
+        val taskIDSize = ser.serialize(task.taskId).limit
+        val attemptNumberSize = ser.serialize(task.attemptNumber).limit
+        val executorSize = ser.serialize(task.executorId).limit
+        val nameSize = ser.serialize(task.name).limit
+        val indexSize = ser.serialize(task.index).limit
         val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        network_log.info(
+s"""TempLog: TaskSent taskIDSize $taskIDSize
+TempLog: TaskSent attemptNumberSize $attemptNumberSize
+TempLog: TaskSent executorSize $executorSize
+TempLog: TaskSent nameSize $nameSize
+TempLog: TaskSent indexSize $indexSize""")
+
+        val serializedTask = ser.serialize(task)
+        network_log.info(s"TempLog: TaskSent taskDescSize ${serializedTask.limit}")
         network_log.info("Task sent byte: " + serializedTask.limit)
         logTrace("Task sent byte: " + serializedTask.limit)
         //network_log.info("Task sent byte: " + serializedTask.limit + " " + serializedTask.capacity)
@@ -291,7 +304,9 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
           logDebug(s"Launching task ${task.taskId} on executor id: ${task.executorId} hostname: " +
             s"${executorData.executorHost}.")
 
-          executorData.executorEndpoint.send(LaunchTask(new SerializableBuffer(serializedTask)), this.getClass().getName() + " category:LaunchTask")
+          val lt = LaunchTask(new SerializableBuffer(serializedTask))
+          logInfo(s"TempLog: TaskSent lt ${ser.serialize(lt).limit}")
+          executorData.executorEndpoint.send(lt, this.getClass().getName() + " category:LaunchTask")
         }
       }
     }

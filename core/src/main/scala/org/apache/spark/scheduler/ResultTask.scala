@@ -54,9 +54,9 @@ import org.apache.log4j.{Level, LogManager, PropertyConfigurator}
 private[spark] class ResultTask[T, U](
     stageId: Int,
     stageAttemptId: Int,
-    taskBinary: Broadcast[Array[Byte]],
-    partition: Partition,
-    locs: Seq[TaskLocation],
+    val taskBinary: Broadcast[Array[Byte]],
+    val partition: Partition,
+    val locs: Seq[TaskLocation],
     val outputId: Int,
     localProperties: Properties,
     metrics: TaskMetrics,

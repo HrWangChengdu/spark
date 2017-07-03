@@ -31,6 +31,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.scheduler.SchedulingMode._
 import org.apache.spark.TaskState.TaskState
 import org.apache.spark.util.{AccumulatorV2, Clock, SystemClock, Utils}
+import org.apache.log4j.LogManager
 
 /**
  * Schedules the tasks within a single TaskSet in the TaskSchedulerImpl. This class keeps track of
@@ -446,6 +447,39 @@ private[spark] class TaskSetManager(
           currentLocalityIndex = getLocalityIndex(taskLocality)
           lastLaunchTime = curTime
         }
+        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        task match {
+          case rt: ResultTask[_, _] =>
+            val taskBinarySize = ser.serialize(rt.taskBinary).limit
+            val locSize = ser.serialize(rt.locs).limit
+            val partitionSize = ser.serialize(rt.partition).limit
+            network_log.info(
+s"""TempLog: TaskSent taskBinarySize $taskBinarySize
+TempLog: TaskSent locSize $locSize
+TempLog: TaskSent partitionSize $partitionSize""")
+          case smt: ShuffleMapTask =>
+            val taskBinarySize = ser.serialize(smt.taskBinary).limit
+            val partitionSize = ser.serialize(smt.partition).limit
+            network_log.info(
+s"""TempLog: TaskSent taskBinarySize $taskBinarySize
+TempLog: TaskSent partitionSize $partitionSize""")
+          case _ =>
+            network_log.info(s"TempLog: TaskSent NoTaskMatch 0")
+        }
+
+        val propertySize = ser.serialize(task.localProperties).limit
+        network_log.info(s"TempLog: TaskSent propertySize $propertySize")
+        val appIdSize = ser.serialize(task.appId).limit
+        val metricSize = ser.serialize(task.metrics).limit
+        val appAttemptIdSize = ser.serialize(task.appAttemptId).limit
+        network_log.info(s"""TempLog: TaskSent appIdSize $appIdSize
+TempLog: TaskSent appAttemptIdSize $appAttemptIdSize
+TempLog: TaskSent metricSize $metricSize""")
+        // val jarSize = ser.serialize(sched.sc.addedJars).limit
+        // val fileSize = ser.serialize(sched.sc.addedFiles).limit
+        // network_log.info(s"""TempLog: TaskSent jarSize $jarSize""")
+        // network_log.info(s"""TempLog: TaskSent fileSize $fileSize""")
+
         // Serialize and return the task
         val startTime = clock.getTimeMillis()
         val serializedTask: ByteBuffer = try {
@@ -476,6 +510,7 @@ private[spark] class TaskSetManager(
           s"partition ${task.partitionId}, $taskLocality, ${serializedTask.limit} bytes)")
 
         sched.dagScheduler.taskStarted(task, info)
+        network_log.info(s"TempLog: TaskSent taskWithJarAndFile ${serializedTask.limit}")
         new TaskDescription(taskId = taskId, attemptNumber = attemptNum, execId,
           taskName, index, serializedTask)
       }
