@@ -305,7 +305,7 @@ TempLog: TaskSent indexSize $indexSize""")
             s"${executorData.executorHost}.")
 
           val lt = LaunchTask(new SerializableBuffer(serializedTask))
-          logInfo(s"TempLog: TaskSent lt ${ser.serialize(lt).limit}")
+          network_log.info(s"TempLog: TaskSent lt ${ser.serialize(lt).limit}")
           executorData.executorEndpoint.send(lt, this.getClass().getName() + " category:LaunchTask")
         }
       }
