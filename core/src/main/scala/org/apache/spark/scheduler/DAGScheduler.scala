@@ -43,6 +43,7 @@ import org.apache.spark.rpc.RpcTimeout
 import org.apache.spark.storage._
 import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
 import org.apache.spark.util._
+import org.apache.log4j.LogManager
 
 /**
  * The high-level scheduling layer that implements stage-oriented scheduling. It computes a DAG of
@@ -993,7 +994,7 @@ class DAGScheduler(
           JavaUtils.bufferToArray(closureSerializer.serialize((stage.rdd, stage.func): AnyRef))
       }
 
-      logInfo("# Bytes of taskBinaryBytes: " + taskBinaryBytes.length + ")")
+      logInfo("# Bytes of taskBinaryBytes: " + taskBinaryBytes.length)
 
       taskBinary = sc.broadcast(taskBinaryBytes)
     } catch {
@@ -1008,6 +1009,19 @@ class DAGScheduler(
         abortStage(stage, s"Task serialization failed: $e\n${Utils.exceptionString(e)}", Some(e))
         runningStages -= stage
         return
+    }
+
+    // (Haoran): Information printed below is about broadcast block. not relates to task sent items
+    val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+    val rddSize = closureSerializer.serialize(stage.rdd).limit
+    network_log.info(s"TempLog: BroadcastBlock RddSize $rddSize")
+    stage match {
+      case stage: ShuffleMapStage =>
+        val shuffleDepSize = closureSerializer.serialize(stage.shuffleDep).limit
+        network_log.info(s"TempLog: BroadcastBlock shuffleDepSize $shuffleDepSize")
+      case stage: ResultStage =>
+        val funcSize = closureSerializer.serialize(stage.func).limit
+        network_log.info(s"TempLog: BroadcastBlock funcSize $funcSize")
     }
 
     val tasks: Seq[Task[_]] = try {
