@@ -103,6 +103,8 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     // then this may need to be changed so that we don't share the serializer
     // instance across threads
     private val ser = SparkEnv.get.closureSerializer.newInstance()
+    private val taskSendSer = SparkEnv.get.taskSentSerializer.newInstance()
+
 
     protected val addressToExecutorId = new HashMap[RpcAddress, String]
 
@@ -265,11 +267,11 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     // Launch tasks returned by a set of resource offers
     private def launchTasks(tasks: Seq[Seq[TaskDescription]]) {
       for (task <- tasks.flatten) {
-        val taskIDSize = ser.serialize(task.taskId).limit
-        val attemptNumberSize = ser.serialize(task.attemptNumber).limit
-        val executorSize = ser.serialize(task.executorId).limit
-        val nameSize = ser.serialize(task.name).limit
-        val indexSize = ser.serialize(task.index).limit
+        val taskIDSize = taskSendSer.serialize(task.taskId).limit
+        val attemptNumberSize = taskSendSer.serialize(task.attemptNumber).limit
+        val executorSize = taskSendSer.serialize(task.executorId).limit
+        val nameSize = taskSendSer.serialize(task.name).limit
+        val indexSize = taskSendSer.serialize(task.index).limit
         val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
         network_log.info(
 s"""TempLog: TaskSent taskIDSize $taskIDSize
@@ -278,7 +280,7 @@ TempLog: TaskSent executorSize $executorSize
 TempLog: TaskSent nameSize $nameSize
 TempLog: TaskSent indexSize $indexSize""")
 
-        val serializedTask = ser.serialize(task)
+        val serializedTask = taskSendSer.serialize(task)
         network_log.info(s"TempLog: TaskSent taskDescSize ${serializedTask.limit}")
         network_log.info("Task sent byte: " + serializedTask.limit)
         logTrace("Task sent byte: " + serializedTask.limit)

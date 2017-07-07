@@ -240,6 +240,7 @@ private[spark] class Executor(
       } else 0L
       Thread.currentThread.setContextClassLoader(replClassLoader)
       val ser = env.closureSerializer.newInstance()
+      val taskSendSer = env.taskSentSerializer.newInstance()
       logInfo(s"Running $taskName (TID $taskId)")
       execBackend.statusUpdate(taskId, TaskState.RUNNING, EMPTY_BYTE_BUFFER)
       var taskStart: Long = 0
@@ -255,7 +256,7 @@ private[spark] class Executor(
         Executor.taskDeserializationProps.set(taskProps)
 
         updateDependencies(taskFiles, taskJars)
-        task = ser.deserialize[Task[Any]](taskBytes, Thread.currentThread.getContextClassLoader)
+        task = taskSendSer.deserialize[Task[Any]](taskBytes, Thread.currentThread.getContextClassLoader)
         task.localProperties = taskProps
         task.setTaskMemoryManager(taskMemoryManager)
 

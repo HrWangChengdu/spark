@@ -66,6 +66,7 @@ private[spark] class TaskSetManager(
   // Serializer for closures and tasks.
   val env = SparkEnv.get
   val ser = env.closureSerializer.newInstance()
+  val taskSendSer = env.taskSentSerializer.newInstance()
 
   val tasks = taskSet.tasks
   val numTasks = tasks.length
@@ -450,16 +451,16 @@ private[spark] class TaskSetManager(
         val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
         task match {
           case rt: ResultTask[_, _] =>
-            val taskBinarySize = ser.serialize(rt.taskBinary).limit
+            val taskBinarySize = taskSendSer.serialize(rt.taskBinary).limit
             val locSize = ser.serialize(rt.locs).limit
-            val partitionSize = ser.serialize(rt.partition).limit
+            val partitionSize = taskSendSer.serialize(rt.partition).limit
             network_log.info(
 s"""TempLog: TaskSent taskBinarySize $taskBinarySize
 TempLog: TaskSent locSize $locSize
 TempLog: TaskSent partitionSize $partitionSize""")
           case smt: ShuffleMapTask =>
-            val taskBinarySize = ser.serialize(smt.taskBinary).limit
-            val partitionSize = ser.serialize(smt.partition).limit
+            val taskBinarySize = taskSendSer.serialize(smt.taskBinary).limit
+            val partitionSize = taskSendSer.serialize(smt.partition).limit
             network_log.info(
 s"""TempLog: TaskSent taskBinarySize $taskBinarySize
 TempLog: TaskSent partitionSize $partitionSize""")
@@ -467,11 +468,11 @@ TempLog: TaskSent partitionSize $partitionSize""")
             network_log.info(s"TempLog: TaskSent NoTaskMatch 0")
         }
 
-        val propertySize = ser.serialize(task.localProperties).limit
+        val propertySize = taskSendSer.serialize(task.localProperties).limit
         network_log.info(s"TempLog: TaskSent propertySize $propertySize")
-        val appIdSize = ser.serialize(task.appId).limit
-        val metricSize = ser.serialize(task.metrics).limit
-        val appAttemptIdSize = ser.serialize(task.appAttemptId).limit
+        val appIdSize = taskSendSer.serialize(task.appId).limit
+        val metricSize = taskSendSer.serialize(task.metrics).limit
+        val appAttemptIdSize = taskSendSer.serialize(task.appAttemptId).limit
         network_log.info(s"""TempLog: TaskSent appIdSize $appIdSize
 TempLog: TaskSent appAttemptIdSize $appAttemptIdSize
 TempLog: TaskSent metricSize $metricSize""")
@@ -483,7 +484,7 @@ TempLog: TaskSent metricSize $metricSize""")
         // Serialize and return the task
         val startTime = clock.getTimeMillis()
         val serializedTask: ByteBuffer = try {
-          Task.serializeWithDependencies(task, sched.sc.addedFiles, sched.sc.addedJars, ser)
+          Task.serializeWithDependencies(task, sched.sc.addedFiles, sched.sc.addedJars, taskSendSer)
         } catch {
           // If the task cannot be serialized, then there's no point to re-attempt the task,
           // as it will always fail. So just abort the whole task-set.

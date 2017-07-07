@@ -58,6 +58,7 @@ class SparkEnv (
     private[spark] val rpcEnv: RpcEnv,
     val serializer: Serializer,
     val closureSerializer: Serializer,
+    val taskSentSerializer: Serializer,
     val serializerManager: SerializerManager,
     val mapOutputTracker: MapOutputTracker,
     val shuffleManager: ShuffleManager,
@@ -288,6 +289,9 @@ object SparkEnv extends Logging {
     val serializerManager = new SerializerManager(serializer, conf, ioEncryptionKey)
 
     val closureSerializer = new JavaSerializer(conf)
+    //val taskSentSerializer = new JavaSerializer(conf)
+    val taskSentSerializer = instantiateClassFromConf[Serializer](
+      "spark.serializer", "org.apache.spark.serializer.JavaSerializer")
 
     def registerOrLookupEndpoint(
         name: String, endpointCreator: => RpcEndpoint):
@@ -377,6 +381,7 @@ object SparkEnv extends Logging {
       rpcEnv,
       serializer,
       closureSerializer,
+      taskSentSerializer,
       serializerManager,
       mapOutputTracker,
       shuffleManager,

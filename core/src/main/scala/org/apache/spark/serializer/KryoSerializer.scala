@@ -37,10 +37,13 @@ import org.apache.spark._
 import org.apache.spark.api.python.PythonBroadcast
 import org.apache.spark.internal.Logging
 import org.apache.spark.network.util.ByteUnit
-import org.apache.spark.scheduler.{CompressedMapStatus, HighlyCompressedMapStatus}
+import org.apache.spark.scheduler.{CompressedMapStatus, HighlyCompressedMapStatus, Task, TaskDescription, ResultTask, ShuffleMapTask}
+import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.storage._
-import org.apache.spark.util.{BoundedPriorityQueue, SerializableConfiguration, SerializableJobConf, Utils}
+import org.apache.spark.util.{BoundedPriorityQueue, SerializableConfiguration, SerializableJobConf, Utils, SerializableBuffer}
 import org.apache.spark.util.collection.CompactBuffer
+import org.apache.spark.util.{AccumulatorV2, LongAccumulator, DoubleAccumulator, AccumulatorMetadata}
+import org.apache.log4j.LogManager
 
 /**
  * A Spark serializer that uses the <a href="https://code.google.com/p/kryo/">
@@ -115,8 +118,18 @@ class KryoSerializer(conf: SparkConf)
     // Allow sending classes with custom Java serializers
     kryo.register(classOf[SerializableWritable[_]], new KryoJavaSerializer())
     kryo.register(classOf[SerializableConfiguration], new KryoJavaSerializer())
+    kryo.register(classOf[SerializableBuffer], new KryoJavaSerializer())
     kryo.register(classOf[SerializableJobConf], new KryoJavaSerializer())
     kryo.register(classOf[PythonBroadcast], new KryoJavaSerializer())
+    kryo.register(classOf[Task[_]], new KryoJavaSerializer())
+    kryo.register(classOf[ResultTask[_, _]], new KryoJavaSerializer())
+    kryo.register(classOf[ShuffleMapTask], new KryoJavaSerializer())
+    kryo.register(classOf[TaskDescription], new KryoJavaSerializer())
+    kryo.register(classOf[TaskMetrics], new KryoJavaSerializer())
+    kryo.register(classOf[AccumulatorV2[_, _]], new KryoJavaSerializer())
+    kryo.register(classOf[LongAccumulator], new KryoJavaSerializer())
+    kryo.register(classOf[DoubleAccumulator], new KryoJavaSerializer())
+    kryo.register(classOf[AccumulatorMetadata], new KryoJavaSerializer())
 
     kryo.register(classOf[GenericRecord], new GenericAvroSerializer(avroSchemas))
     kryo.register(classOf[GenericData.Record], new GenericAvroSerializer(avroSchemas))
@@ -317,12 +330,18 @@ private[spark] class KryoSerializerInstance(ks: KryoSerializer, useUnsafe: Boole
     } finally {
       releaseKryo(kryo)
     }
-    ByteBuffer.wrap(output.toBytes)
+    val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+    val byteArray= output.toBytes
+    val byteSize = byteArray.length
+    network_log.info(s"TempLog: TaskSent Kryo-SerializerByteSize ${byteSize}")
+    ByteBuffer.wrap(byteArray)
   }
 
   override def deserialize[T: ClassTag](bytes: ByteBuffer): T = {
     val kryo = borrowKryo()
     try {
+      val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+      network_log.info(s"TempLog: TaskSent Kryo-DeserializerByteSize")
       input.setBuffer(bytes.array(), bytes.arrayOffset() + bytes.position(), bytes.remaining())
       kryo.readClassAndObject(input).asInstanceOf[T]
     } finally {

@@ -54,6 +54,7 @@ private[spark] class CoarseGrainedExecutorBackend(
   // If this CoarseGrainedExecutorBackend is changed to support multiple threads, then this may need
   // to be changed so that we don't share the serializer instance across threads
   private[this] val ser: SerializerInstance = env.closureSerializer.newInstance()
+  private[this] val taskSendSer = env.taskSentSerializer.newInstance()
 
   override def onStart() {
     logInfo("Connecting to driver: " + driverUrl)
@@ -95,7 +96,7 @@ private[spark] class CoarseGrainedExecutorBackend(
       } else {
         val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
         network_log.info("Got Task Size: " + data.value.remaining)
-        val taskDesc = ser.deserialize[TaskDescription](data.value)
+        val taskDesc = taskSendSer.deserialize[TaskDescription](data.value)
         logInfo("Got assigned task " + taskDesc.taskId)
         executor.launchTask(this, taskId = taskDesc.taskId, attemptNumber = taskDesc.attemptNumber,
           taskDesc.name, taskDesc.serializedTask)
