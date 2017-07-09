@@ -18,7 +18,9 @@
 package org.apache.spark.serializer
 
 import java.io._
+import java.{lang => jl}
 import java.nio.ByteBuffer
+import java.util.{List, Collections, ArrayList}
 import javax.annotation.Nullable
 
 import scala.collection.JavaConverters._
@@ -34,6 +36,7 @@ import org.apache.avro.generic.{GenericData, GenericRecord}
 import org.roaringbitmap.RoaringBitmap
 
 import org.apache.spark._
+import org.apache.spark.rdd._
 import org.apache.spark.api.python.PythonBroadcast
 import org.apache.spark.internal.Logging
 import org.apache.spark.network.util.ByteUnit
@@ -42,7 +45,7 @@ import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.storage._
 import org.apache.spark.util.{BoundedPriorityQueue, SerializableConfiguration, SerializableJobConf, Utils, SerializableBuffer}
 import org.apache.spark.util.collection.CompactBuffer
-import org.apache.spark.util.{AccumulatorV2, LongAccumulator, DoubleAccumulator, AccumulatorMetadata}
+import org.apache.spark.util.{AccumulatorV2, LongAccumulator, DoubleAccumulator, AccumulatorMetadata, CollectionAccumulator}
 import org.apache.log4j.LogManager
 
 /**
@@ -112,8 +115,37 @@ class KryoSerializer(conf: SparkConf)
       kryo.register(cls, ser)
     }
 
+    kryo.register(classOf[Task[_]])
+    kryo.register(classOf[ResultTask[_, _]])
+    kryo.register(classOf[ShuffleMapTask])
+    kryo.register(classOf[TaskDescription])
+    kryo.register(classOf[TaskMetrics])
+    kryo.register(classOf[AccumulatorV2[_, _]])
+    kryo.register(classOf[LongAccumulator])
+    kryo.register(classOf[CollectionAccumulator[_]])
+    kryo.register(classOf[DoubleAccumulator])
+    kryo.register(classOf[AccumulatorMetadata])
+    kryo.register(classOf[Partition])
+    kryo.register(classOf[BlockRDDPartition])
+    kryo.register(classOf[CoGroupPartition])
+    kryo.register(classOf[ShuffledRDDPartition])
+    kryo.register(classOf[CartesianPartition])
+    kryo.register(classOf[CheckpointRDDPartition])
+    kryo.register(classOf[CoalescedRDDPartition])
+    kryo.register(classOf[HadoopPartition])
+    kryo.register(classOf[JdbcPartition])
+    kryo.register(classOf[NewHadoopPartition])
+    kryo.register(classOf[ParallelCollectionPartition[_]])
+    kryo.register(classOf[PartitionerAwareUnionRDDPartition])
+    kryo.register(classOf[PartitionwiseSampledRDDPartition])
+    kryo.register(classOf[UnionPartition[_]])
+    kryo.register(classOf[ZippedPartitionsPartition])
+    kryo.register(classOf[ZippedWithIndexRDDPartition])
+    kryo.register(classOf[List[_]])
+    kryo.register(Collections.synchronizedCollection(new ArrayList[String]).getClass)
     // For results returned by asJavaIterable. See JavaIterableWrapperSerializer.
     kryo.register(JavaIterableWrapperSerializer.wrapperClass, new JavaIterableWrapperSerializer)
+
 
     // Allow sending classes with custom Java serializers
     kryo.register(classOf[SerializableWritable[_]], new KryoJavaSerializer())
@@ -121,15 +153,7 @@ class KryoSerializer(conf: SparkConf)
     kryo.register(classOf[SerializableBuffer], new KryoJavaSerializer())
     kryo.register(classOf[SerializableJobConf], new KryoJavaSerializer())
     kryo.register(classOf[PythonBroadcast], new KryoJavaSerializer())
-    kryo.register(classOf[Task[_]], new KryoJavaSerializer())
-    kryo.register(classOf[ResultTask[_, _]], new KryoJavaSerializer())
-    kryo.register(classOf[ShuffleMapTask], new KryoJavaSerializer())
-    kryo.register(classOf[TaskDescription], new KryoJavaSerializer())
     kryo.register(classOf[TaskMetrics], new KryoJavaSerializer())
-    kryo.register(classOf[AccumulatorV2[_, _]], new KryoJavaSerializer())
-    kryo.register(classOf[LongAccumulator], new KryoJavaSerializer())
-    kryo.register(classOf[DoubleAccumulator], new KryoJavaSerializer())
-    kryo.register(classOf[AccumulatorMetadata], new KryoJavaSerializer())
 
     kryo.register(classOf[GenericRecord], new GenericAvroSerializer(avroSchemas))
     kryo.register(classOf[GenericData.Record], new GenericAvroSerializer(avroSchemas))
@@ -403,6 +427,19 @@ private[serializer] object KryoSerializer {
     classOf[HighlyCompressedMapStatus],
     classOf[CompactBuffer[_]],
     classOf[BlockManagerId],
+    classOf[BlockId],
+    classOf[RDDBlockId],
+    classOf[ShuffleBlockId],
+    classOf[ShuffleDataBlockId],
+    classOf[ShuffleIndexBlockId],
+    classOf[BroadcastBlockId],
+    classOf[TaskResultBlockId],
+    classOf[StreamBlockId],
+    classOf[TempLocalBlockId],
+    classOf[TempShuffleBlockId],
+    classOf[jl.Long],
+    classOf[TestBlockId],
+    classOf[BlockStatus],
     classOf[Array[Byte]],
     classOf[Array[Short]],
     classOf[Array[Long]],
