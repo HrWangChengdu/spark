@@ -291,7 +291,7 @@ object SparkEnv extends Logging {
     val closureSerializer = new JavaSerializer(conf)
     //val taskSentSerializer = new JavaSerializer(conf)
     val taskSentSerializer = instantiateClassFromConf[Serializer](
-      "spark.serializer", "org.apache.spark.serializer.JavaSerializer")
+      "spark.taskSendSerializer", "org.apache.spark.serializer.JavaSerializer")
 
     def registerOrLookupEndpoint(
         name: String, endpointCreator: => RpcEndpoint):
