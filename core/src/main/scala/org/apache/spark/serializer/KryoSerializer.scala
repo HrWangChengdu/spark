@@ -43,6 +43,7 @@ import org.apache.spark.network.util.ByteUnit
 import org.apache.spark.scheduler.{CompressedMapStatus, HighlyCompressedMapStatus, Task, TaskDescription, ResultTask, ShuffleMapTask}
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.storage._
+import org.apache.spark.rpc.netty.RequestMessage
 import org.apache.spark.util.{BoundedPriorityQueue, SerializableConfiguration, SerializableJobConf, Utils, SerializableBuffer}
 import org.apache.spark.util.collection.CompactBuffer
 import org.apache.spark.util.{AccumulatorV2, LongAccumulator, DoubleAccumulator, AccumulatorMetadata, CollectionAccumulator}
@@ -347,6 +348,9 @@ private[spark] class KryoSerializerInstance(ks: KryoSerializer, useUnsafe: Boole
     val kryo = borrowKryo()
     try {
       kryo.writeClassAndObject(output, t)
+      if (t.isInstanceOf[RequestMessage]) {
+        kryo.writeObject(output, 1.toByte)
+      }
     } catch {
       case e: KryoException if e.getMessage.startsWith("Buffer overflow") =>
         throw new SparkException(s"Kryo serialization failed: ${e.getMessage}. To avoid this, " +
@@ -358,7 +362,11 @@ private[spark] class KryoSerializerInstance(ks: KryoSerializer, useUnsafe: Boole
     val byteArray= output.toBytes
     val byteSize = byteArray.length
     network_log.info(s"TempLog: TaskSent Kryo-SerializerByteSize ${byteSize}")
-    ByteBuffer.wrap(byteArray)
+    val bf = ByteBuffer.wrap(byteArray)
+    if (t.isInstanceOf[RequestMessage]) {
+      bf.limit(bf.limit - 1)
+    }
+    bf
   }
 
   override def deserialize[T: ClassTag](bytes: ByteBuffer): T = {
@@ -366,7 +374,14 @@ private[spark] class KryoSerializerInstance(ks: KryoSerializer, useUnsafe: Boole
     try {
       val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
       network_log.info(s"TempLog: TaskSent Kryo-DeserializerByteSize")
-      input.setBuffer(bytes.array(), bytes.arrayOffset() + bytes.position(), bytes.remaining())
+      if (bytes.hasArray) {
+        input.setBuffer(bytes.array(), bytes.arrayOffset() + bytes.position(), bytes.remaining())
+      } else {
+        val len = bytes.remaining
+        val arr = new Array[Byte](len)
+        bytes.get(arr)
+        input.setBuffer(arr, 0, len)
+      }
       kryo.readClassAndObject(input).asInstanceOf[T]
     } finally {
       releaseKryo(kryo)
@@ -443,6 +458,7 @@ private[serializer] object KryoSerializer {
     classOf[Array[Byte]],
     classOf[Array[Short]],
     classOf[Array[Long]],
+    classOf[RequestMessage],
     classOf[BoundedPriorityQueue[_]],
     classOf[SparkConf]
   )

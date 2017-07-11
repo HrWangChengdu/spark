@@ -27,6 +27,7 @@ import scala.collection.JavaConverters._
 
 import org.apache.spark.{InternalAccumulator, SparkContext, TaskContext}
 import org.apache.spark.scheduler.AccumulableInfo
+// import org.apache.log4j.LogManager
 
 
 private[spark] case class AccumulatorMetadata(
@@ -154,6 +155,8 @@ abstract class AccumulatorV2[IN, OUT] extends Serializable {
 
   // Called by Java when serializing an object
   final protected def writeReplace(): Any = {
+    // val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+    // network_log.info(s"TempLog: Accumulator writeObject atDriverSide ${atDriverSide}")
     if (atDriverSide) {
       if (!isRegistered) {
         throw new UnsupportedOperationException(
@@ -170,6 +173,8 @@ abstract class AccumulatorV2[IN, OUT] extends Serializable {
 
   // Called by Java when deserializing an object
   private def readObject(in: ObjectInputStream): Unit = Utils.tryOrIOException {
+    // val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+    // network_log.info(s"TempLog: Accumulator readObject atDriverSide ${atDriverSide}")
     in.defaultReadObject()
     if (atDriverSide) {
       atDriverSide = false
