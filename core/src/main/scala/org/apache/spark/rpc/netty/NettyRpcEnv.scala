@@ -203,7 +203,6 @@ private[netty] class NettyRpcEnv(
       val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
       if (senderType.endsWith("category:LaunchTask")) {
         network_log.info(s"TempLog: TaskSent TestDesrializeLaunchTask")
-
         if (useKryo) {
           bf = taskSentSerialize(message)
           assert(bf.limit < bf.capacity)
@@ -212,6 +211,8 @@ private[netty] class NettyRpcEnv(
         } else {
           bf = serialize(message)
         }
+        network_log.info("Task sent byte: " + bf.limit)
+        logTrace("Task sent byte: " + bf.limit)
 
         val recSize = serialize(message.receiver).limit
         val recNameSize = serialize(message.receiver.name).limit

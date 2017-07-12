@@ -282,10 +282,6 @@ TempLog: TaskSent indexSize $indexSize""")
 
         val serializedTask = taskSendSer.serialize(task)
         network_log.info(s"TempLog: TaskSent taskDescSize ${serializedTask.limit}")
-        network_log.info("Task sent byte: " + serializedTask.limit)
-        logTrace("Task sent byte: " + serializedTask.limit)
-        //network_log.info("Task sent byte: " + serializedTask.limit + " " + serializedTask.capacity)
-        //logTrace("Task sent byte: " + serializedTask.limit + " " + serializedTask.capacity)
         if (serializedTask.limit >= maxRpcMessageSize) {
           scheduler.taskIdToTaskSetManager.get(task.taskId).foreach { taskSetMgr =>
             try {
