@@ -79,7 +79,7 @@ public final class MessageEncoder extends MessageToMessageEncoder<Message> {
     long frameLength = headerLength + (isBodyInFrame ? bodyLength : 0);
 
     org.apache.log4j.Logger network_log = org.apache.log4j.LogManager.getLogger("networkLogger");
-    network_log.info("Command send byte: " + frameLength);
+    network_log.info("Command sent byte: " + frameLength);
     // network_log.info("Command header byte: " + headerLength);
 
     ByteBuf header = ctx.alloc().heapBuffer(headerLength);

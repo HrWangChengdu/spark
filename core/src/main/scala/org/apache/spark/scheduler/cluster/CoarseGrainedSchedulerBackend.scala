@@ -266,22 +266,29 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
 
     // Launch tasks returned by a set of resource offers
     private def launchTasks(tasks: Seq[Seq[TaskDescription]]) {
+      val conf = SparkEnv.get.conf
+      val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
       for (task <- tasks.flatten) {
-        val taskIDSize = taskSendSer.serialize(task.taskId).limit
-        val attemptNumberSize = taskSendSer.serialize(task.attemptNumber).limit
-        val executorSize = taskSendSer.serialize(task.executorId).limit
-        val nameSize = taskSendSer.serialize(task.name).limit
-        val indexSize = taskSendSer.serialize(task.index).limit
-        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-        network_log.info(
+
+        if (conf.getBoolean("spark.TaskSentBreakDown", false)) {
+          val taskIDSize = taskSendSer.serialize(task.taskId).limit
+          val attemptNumberSize = taskSendSer.serialize(task.attemptNumber).limit
+          val executorSize = taskSendSer.serialize(task.executorId).limit
+          val nameSize = taskSendSer.serialize(task.name).limit
+          val indexSize = taskSendSer.serialize(task.index).limit
+          network_log.info(
 s"""TempLog: TaskSent taskIDSize $taskIDSize
 TempLog: TaskSent attemptNumberSize $attemptNumberSize
 TempLog: TaskSent executorSize $executorSize
 TempLog: TaskSent nameSize $nameSize
 TempLog: TaskSent indexSize $indexSize""")
+        }
 
         val serializedTask = taskSendSer.serialize(task)
-        network_log.info(s"TempLog: TaskSent taskDescSize ${serializedTask.limit}")
+
+        if (conf.getBoolean("spark.TaskSentBreakDown", false) || conf.getBoolean("spark.TaskSentBreakDownLimited", false)) {
+          network_log.info(s"TempLog: TaskSent taskDescSize ${serializedTask.limit}")
+        }
         if (serializedTask.limit >= maxRpcMessageSize) {
           scheduler.taskIdToTaskSetManager.get(task.taskId).foreach { taskSetMgr =>
             try {
@@ -303,7 +310,10 @@ TempLog: TaskSent indexSize $indexSize""")
             s"${executorData.executorHost}.")
 
           val lt = LaunchTask(new SerializableBuffer(serializedTask))
-          network_log.info(s"TempLog: TaskSent lt ${ser.serialize(lt).limit}")
+
+          if (conf.getBoolean("spark.TaskSentBreakDown", false)) {
+            network_log.info(s"TempLog: TaskSent lt ${ser.serialize(lt).limit}")
+          }
           executorData.executorEndpoint.send(lt, this.getClass().getName() + " category:LaunchTask")
         }
       }

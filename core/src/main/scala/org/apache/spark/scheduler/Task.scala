@@ -224,30 +224,39 @@ private[spark] object Task {
     val dataOut = new DataOutputStream(out)
 
     val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+
+    val conf = SparkEnv.get.conf
     // Write currentFiles
-    var fileSize = 0
-    fileSize += serializer.serialize(currentFiles.size).limit
     dataOut.writeInt(currentFiles.size)
     for ((name, timestamp) <- currentFiles) {
-      fileSize += serializer.serialize(name).limit
-      fileSize += serializer.serialize(timestamp).limit
       dataOut.writeUTF(name)
       dataOut.writeLong(timestamp)
     }
-    network_log.info(s"""TempLog: TaskSent fileSize $fileSize""")
+
+    if (conf.getBoolean("spark.TaskSentBreakDown", false)) {
+      var fileSize = 0
+      fileSize += serializer.serialize(currentFiles.size).limit
+      for ((name, timestamp) <- currentFiles) {
+        fileSize += serializer.serialize(name).limit
+        fileSize += serializer.serialize(timestamp).limit
+      }
+      network_log.info(s"""TempLog: TaskSent fileSize $fileSize""")
+
+      var jarSize = 0
+      jarSize += serializer.serialize(currentJars.size).limit
+      for ((name, timestamp) <- currentJars) {
+        jarSize += serializer.serialize(name).limit
+        jarSize += serializer.serialize(timestamp).limit
+      }
+      network_log.info(s"""TempLog: TaskSent jarSize $jarSize""")
+    }
 
     // Write currentJars
-    var jarSize = 0
-    jarSize += serializer.serialize(currentJars.size).limit
     dataOut.writeInt(currentJars.size)
     for ((name, timestamp) <- currentJars) {
-      jarSize += serializer.serialize(name).limit
-      jarSize += serializer.serialize(timestamp).limit
       dataOut.writeUTF(name)
       dataOut.writeLong(timestamp)
     }
-    network_log.info(s"""TempLog: TaskSent jarSize $jarSize""")
-
 
     // Write the task properties separately so it is available before full task deserialization.
     val propBytes = Utils.serialize(task.localProperties)
@@ -257,7 +266,9 @@ private[spark] object Task {
     // Write the task itself and finish
     dataOut.flush()
     val taskBytes = serializer.serialize(task)
-    network_log.info(s"""TempLog: TaskSent pureTaskSize ${taskBytes.limit}""")
+    if (conf.getBoolean("spark.TaskSentBreakDown", false) || conf.getBoolean("spark.TaskSentBreakDownLimited", false)) {
+      network_log.info(s"""TempLog: TaskSent pureTaskSize ${taskBytes.limit}""")
+    }
     Utils.writeByteBuffer(taskBytes, out)
     out.close()
     out.toByteBuffer

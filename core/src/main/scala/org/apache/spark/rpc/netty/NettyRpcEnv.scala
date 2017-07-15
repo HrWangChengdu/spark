@@ -214,13 +214,19 @@ private[netty] class NettyRpcEnv(
         network_log.info("Task sent byte: " + bf.limit)
         logTrace("Task sent byte: " + bf.limit)
 
-        val recSize = serialize(message.receiver).limit
-        val recNameSize = serialize(message.receiver.name).limit
-        val addressSize = serialize(message.senderAddress).limit
-        network_log.info(s"TempLog: TaskSent messageSize ${bf.limit}")
-        network_log.info(s"TempLog: TaskSent receiverSize $recSize")
-        network_log.info(s"TempLog: TaskSent receiverNameSize $recNameSize")
-        network_log.info(s"TempLog: TaskSent senderAddressSize $addressSize")
+        if (conf.getBoolean("spark.TaskSentBreakDownLimited", false)) {
+          network_log.info(s"TempLog: TaskSent messageSize ${bf.limit}")
+        }
+
+        if (conf.getBoolean("spark.TaskSentBreakDown", false)) {
+          val recSize = serialize(message.receiver).limit
+          val recNameSize = serialize(message.receiver.name).limit
+          val addressSize = serialize(message.senderAddress).limit
+          network_log.info(s"TempLog: TaskSent messageSize ${bf.limit}")
+          network_log.info(s"TempLog: TaskSent receiverSize $recSize")
+          network_log.info(s"TempLog: TaskSent receiverNameSize $recNameSize")
+          network_log.info(s"TempLog: TaskSent senderAddressSize $addressSize")
+        }
       } else {
         bf = serialize(message)
         if (useKryo) {
@@ -278,13 +284,20 @@ private[netty] class NettyRpcEnv(
           } else {
             bf = serialize(message)
           }
-          val recSize = serialize(message.receiver).limit
-          val recNameSize = serialize(message.receiver.name).limit
-          val addressSize = serialize(message.senderAddress).limit
-          network_log.info(s"TempLog: TaskSent messageSize ${bf.limit}")
-          network_log.info(s"TempLog: TaskSent receiverSize $recSize")
-          network_log.info(s"TempLog: TaskSent receiverNameSize $recNameSize")
-          network_log.info(s"TempLog: TaskSent senderAddressSize $addressSize")
+
+          if (conf.getBoolean("spark.TaskSentBreakDownLimited", false)) {
+            network_log.info(s"TempLog: TaskSent messageSize ${bf.limit}")
+          }
+
+          if (conf.getBoolean("spark.TaskSentBreakDown", false)) {
+            val recSize = serialize(message.receiver).limit
+            val recNameSize = serialize(message.receiver.name).limit
+            val addressSize = serialize(message.senderAddress).limit
+            network_log.info(s"TempLog: TaskSent messageSize ${bf.limit}")
+            network_log.info(s"TempLog: TaskSent receiverSize $recSize")
+            network_log.info(s"TempLog: TaskSent receiverNameSize $recNameSize")
+            network_log.info(s"TempLog: TaskSent senderAddressSize $addressSize")
+          }
         } else {
           bf = serialize(message)
           if (useKryo) {
@@ -698,7 +711,8 @@ private[netty] class NettyRpcHandler(
     //  address size ${nettyEnv.serialize(messageToDispatch.senderAddress).limit},
     //  receiver name size ${name_size},
     //  receiver size ${nettyEnv.serialize(messageToDispatch.receiver).limit}""")
-    if (messageToDispatch.content.isInstanceOf[StatusUpdate]) {
+    if (messageToDispatch.content.isInstanceOf[StatusUpdate] &&
+          nettyEnv.conf.getBoolean("spark.SUBreakDown", false)) {
       val stateUpdate = messageToDispatch.content.asInstanceOf[StatusUpdate]
       val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
       network_log.info(

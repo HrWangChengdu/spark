@@ -451,35 +451,41 @@ private[spark] class TaskSetManager(
         val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
         task match {
           case rt: ResultTask[_, _] =>
-            val taskBinarySize = taskSendSer.serialize(rt.taskBinary).limit
-            val locSize = ser.serialize(rt.locs).limit
-            val partitionSize = taskSendSer.serialize(rt.partition).limit
-            network_log.info(
+            if (env.conf.getBoolean("spark.TaskSentBreakDown", false) || conf.getBoolean("spark.TaskSentBreakDownLimited", false)) {
+              val taskBinarySize = taskSendSer.serialize(rt.taskBinary).limit
+              val partitionSize = taskSendSer.serialize(rt.partition).limit
+              network_log.info(
 s"""TempLog: TaskSent taskBinarySize $taskBinarySize
-TempLog: TaskSent locSize $locSize
 TempLog: TaskSent partitionSize $partitionSize""")
+            }
           case smt: ShuffleMapTask =>
-            val taskBinarySize = taskSendSer.serialize(smt.taskBinary).limit
-            val partitionSize = taskSendSer.serialize(smt.partition).limit
-            network_log.info(
+            if (env.conf.getBoolean("spark.TaskSentBreakDown", false) || conf.getBoolean("spark.TaskSentBreakDownLimited", false)) {
+              val taskBinarySize = taskSendSer.serialize(smt.taskBinary).limit
+              val partitionSize = taskSendSer.serialize(smt.partition).limit
+              network_log.info(
 s"""TempLog: TaskSent taskBinarySize $taskBinarySize
 TempLog: TaskSent partitionSize $partitionSize""")
+            }
           case _ =>
             network_log.info(s"TempLog: TaskSent NoTaskMatch 0")
         }
 
-        val propertySize = taskSendSer.serialize(task.localProperties).limit
-        network_log.info(s"TempLog: TaskSent propertySize $propertySize")
-        val appIdSize = taskSendSer.serialize(task.appId).limit
-        val metricSize = taskSendSer.serialize(task.metrics).limit
-        val appAttemptIdSize = taskSendSer.serialize(task.appAttemptId).limit
-        network_log.info(s"""TempLog: TaskSent appIdSize $appIdSize
+
+        if (env.conf.getBoolean("spark.TaskSentBreakDown", false)) {
+          val propertySize = taskSendSer.serialize(task.localProperties).limit
+          val appIdSize = taskSendSer.serialize(task.appId).limit
+          val metricSize = taskSendSer.serialize(task.metrics).limit
+          val appAttemptIdSize = taskSendSer.serialize(task.appAttemptId).limit
+          network_log.info(s"""TempLog: TaskSent appIdSize $appIdSize
 TempLog: TaskSent appAttemptIdSize $appAttemptIdSize
+TempLog: TaskSent propertySize $propertySize
 TempLog: TaskSent metricSize $metricSize""")
-        // val jarSize = ser.serialize(sched.sc.addedJars).limit
-        // val fileSize = ser.serialize(sched.sc.addedFiles).limit
-        // network_log.info(s"""TempLog: TaskSent jarSize $jarSize""")
-        // network_log.info(s"""TempLog: TaskSent fileSize $fileSize""")
+        }
+
+        if (env.conf.getBoolean("spark.TaskSentBreakDownLimited", false)) {
+          val metricSize = taskSendSer.serialize(task.metrics).limit
+          network_log.info(s"TempLog: TaskSent metricSize $metricSize")
+        }
 
         // Serialize and return the task
         val startTime = clock.getTimeMillis()
@@ -511,7 +517,10 @@ TempLog: TaskSent metricSize $metricSize""")
           s"partition ${task.partitionId}, $taskLocality, ${serializedTask.limit} bytes)")
 
         sched.dagScheduler.taskStarted(task, info)
-        network_log.info(s"TempLog: TaskSent taskWithJarAndFile ${serializedTask.limit}")
+
+        if (env.conf.getBoolean("spark.TaskSentBreakDown", false)) {
+          network_log.info(s"TempLog: TaskSent taskWithJarAndFile ${serializedTask.limit}")
+        }
         new TaskDescription(taskId = taskId, attemptNumber = attemptNum, execId,
           taskName, index, serializedTask)
       }

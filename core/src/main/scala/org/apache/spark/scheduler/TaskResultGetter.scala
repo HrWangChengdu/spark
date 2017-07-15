@@ -75,12 +75,14 @@ private[spark] class TaskResultGetter(sparkEnv: SparkEnv, scheduler: TaskSchedul
               // "TaskSetManager.handleSuccessfulTask", it does not need to deserialize the value.
               directResult.value(taskResultSerializer.get())
               // network_log.trace(s"TempLog: TaskResultGetter DirectResult: ${serializedData.limit()}")
-              val size0 = directResult.valueBytes.limit
-              val size1 = taskResultSerializer.get().serialize(directResult.accumUpdates).limit
-              network_log.info(
+              if (sparkEnv.conf.getBoolean("spark.SUBreakDown", false)) {
+                val size0 = directResult.valueBytes.limit
+                val size1 = taskResultSerializer.get().serialize(directResult.accumUpdates).limit
+                network_log.info(
 s"""TempLog: SU dupData ${serializedData.limit()}
 TempLog: SU pureValue ${size0}
 TempLog: SU accum ${size1}""")
+              }
               (directResult, serializedData.limit())
             case IndirectTaskResult(blockId, size) =>
               if (!taskSetManager.canFetchMoreResults(size)) {
