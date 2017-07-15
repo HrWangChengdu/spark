@@ -25,7 +25,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToMessageEncoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-//import org.apache.log4j.LogManager;
+import org.apache.log4j.LogManager;
 
 /**
  * Encoder used by the server side to encode server-to-client responses.
@@ -52,10 +52,7 @@ public final class MessageEncoder extends MessageToMessageEncoder<Message> {
     if (in.body() != null) {
       try {
         bodyLength = in.body().size();
-        //org.apache.log4j.Logger network_log = org.apache.log4j.LogManager.getLogger("networkLogger");
-        //network_log.info("Command sent byte: " + bodyLength);
         logger.trace("Body info {} " + in);
-        logger.trace("Command sent byte: " + bodyLength);
         body = in.body().convertToNetty();
         isBodyInFrame = in.isBodyInFrame();
       } catch (Exception e) {
@@ -80,6 +77,11 @@ public final class MessageEncoder extends MessageToMessageEncoder<Message> {
     // sent.
     int headerLength = 8 + msgType.encodedLength() + in.encodedLength();
     long frameLength = headerLength + (isBodyInFrame ? bodyLength : 0);
+
+    org.apache.log4j.Logger network_log = org.apache.log4j.LogManager.getLogger("networkLogger");
+    network_log.info("Command send byte: " + frameLength);
+    // network_log.info("Command header byte: " + headerLength);
+
     ByteBuf header = ctx.alloc().heapBuffer(headerLength);
     header.writeLong(frameLength);
     msgType.encode(header);

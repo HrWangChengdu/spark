@@ -22,7 +22,6 @@ import io.netty.buffer.ByteBuf;
 
 import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.buffer.NettyManagedBuffer;
-import org.apache.log4j.LogManager;
 
 /**
  * Response to {@link ChunkFetchRequest} when a chunk exists and has been successfully fetched.
@@ -51,8 +50,6 @@ public final class ChunkFetchSuccess extends AbstractResponseMessage {
   @Override
   public void encode(ByteBuf buf) {
     streamChunkId.encode(buf);
-    org.apache.log4j.Logger network_log = org.apache.log4j.LogManager.getLogger("networkLogger");
-    network_log.info("ChunkFecth Command sent byte: " + (buf.readableBytes()+ body().size()));
   }
 
   @Override
