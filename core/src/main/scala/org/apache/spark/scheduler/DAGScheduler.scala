@@ -188,12 +188,13 @@ class DAGScheduler(
   /** If enabled, FetchFailed will not cause stage retry, in order to surface the problem. */
   private val disallowStageRetryForTest = sc.getConf.getBoolean("spark.test.noStageRetry", false)
 
+  private val printBC = sc.getConf.getBoolean("spark.selflog.BlockTransfer", false)
+
   private val messageScheduler =
     ThreadUtils.newDaemonSingleThreadScheduledExecutor("dag-scheduler-message")
 
   private[scheduler] val eventProcessLoop = new DAGSchedulerEventProcessLoop(this)
   taskScheduler.setDAGScheduler(this)
-
   /**
    * Called by the TaskSetManager to report task's starting.
    */
@@ -975,6 +976,7 @@ class DAGScheduler(
 
     stage.makeNewStageAttempt(partitionsToCompute.size, taskIdToLocations.values.toSeq)
     listenerBus.post(SparkListenerStageSubmitted(stage.latestInfo, properties))
+    val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
 
     // TODO: Maybe we can keep the taskBinary in Stage to avoid serializing it multiple times.
     // Broadcasted binary for the task, used to dispatch tasks to executors. Note that we broadcast
@@ -1012,16 +1014,17 @@ class DAGScheduler(
     }
 
     // (Haoran): Information printed below is about broadcast block. not relates to task sent items
-    val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-    val rddSize = closureSerializer.serialize(stage.rdd).limit
-    network_log.info(s"TempLog: BroadcastBlock RddSize $rddSize")
-    stage match {
-      case stage: ShuffleMapStage =>
-        val shuffleDepSize = closureSerializer.serialize(stage.shuffleDep).limit
-        network_log.info(s"TempLog: BroadcastBlock shuffleDepSize $shuffleDepSize")
-      case stage: ResultStage =>
-        val funcSize = closureSerializer.serialize(stage.func).limit
-        network_log.info(s"TempLog: BroadcastBlock funcSize $funcSize")
+    if (printBC) {
+      val rddSize = closureSerializer.serialize(stage.rdd).limit
+      network_log.info(s"TempLog: BroadcastBlock RddSize $rddSize")
+      stage match {
+        case stage: ShuffleMapStage =>
+          val shuffleDepSize = closureSerializer.serialize(stage.shuffleDep).limit
+          network_log.info(s"TempLog: BroadcastBlock shuffleDepSize $shuffleDepSize")
+        case stage: ResultStage =>
+          val funcSize = closureSerializer.serialize(stage.func).limit
+          network_log.info(s"TempLog: BroadcastBlock funcSize $funcSize")
+      }
     }
 
     val tasks: Seq[Task[_]] = try {
