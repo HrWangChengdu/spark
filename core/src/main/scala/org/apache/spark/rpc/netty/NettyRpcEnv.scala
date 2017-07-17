@@ -564,8 +564,13 @@ private[rpc] class NettyRpcEnvFactory extends RpcEnvFactory with Logging {
       taskSentSer = new KryoSerializer(sparkConf).newInstance().asInstanceOf[KryoSerializerInstance]
     } catch {
       case e: Exception =>
-        useKryo = false
-        taskSentSer = new JavaSerializer(sparkConf).newInstance().asInstanceOf[JavaSerializerInstance]
+        // For executor
+        if (System.getenv("taskSendSerializerKryo") == "true") {
+          taskSentSer = new KryoSerializer(sparkConf).newInstance().asInstanceOf[KryoSerializerInstance]
+        } else {
+          useKryo = false
+          taskSentSer = new JavaSerializer(sparkConf).newInstance().asInstanceOf[JavaSerializerInstance]
+        }
     }
 
     val threadlocalTaskSentSer = new ThreadLocal[SerializerInstance]()
