@@ -202,7 +202,6 @@ private[netty] class NettyRpcEnv(
       var bf: ByteBuffer = null
       val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
       if (senderType.endsWith("category:LaunchTask")) {
-        network_log.info(s"TempLog: TaskSent TestDesrializeLaunchTask")
         if (useKryo) {
           bf = taskSentSerialize(message)
           assert(bf.limit < bf.capacity)
