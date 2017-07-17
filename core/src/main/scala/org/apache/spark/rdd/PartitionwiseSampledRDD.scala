@@ -50,6 +50,7 @@ private[spark] class PartitionwiseSampledRDD[T: ClassTag, U: ClassTag](
     preservesPartitioning: Boolean,
     @transient private val seed: Long = Utils.random.nextLong)
   extends RDD[U](prev) {
+  name = this.getClass().getName
 
   @transient override val partitioner = if (preservesPartitioning) prev.partitioner else None
 

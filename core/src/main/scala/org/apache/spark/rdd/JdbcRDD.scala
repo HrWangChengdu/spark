@@ -64,6 +64,7 @@ class JdbcRDD[T: ClassTag](
     numPartitions: Int,
     mapRow: (ResultSet) => T = JdbcRDD.resultSetToObjectArray _)
   extends RDD[T](sc, Nil) with Logging {
+  name = this.getClass().getName
 
   override def getPartitions: Array[Partition] = {
     // bounds are inclusive, hence the + 1 here and - 1 on end

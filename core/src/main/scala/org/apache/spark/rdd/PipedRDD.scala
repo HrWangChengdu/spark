@@ -50,6 +50,7 @@ private[spark] class PipedRDD[T: ClassTag](
     bufferSize: Int,
     encoding: String)
   extends RDD[String](prev) {
+  name = this.getClass().getName
 
   override def getPartitions: Array[Partition] = firstParent[T].partitions
 

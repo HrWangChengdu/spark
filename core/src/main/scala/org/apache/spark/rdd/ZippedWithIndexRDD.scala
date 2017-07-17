@@ -38,6 +38,7 @@ class ZippedWithIndexRDDPartition(val prev: Partition, val startIndex: Long)
  */
 private[spark]
 class ZippedWithIndexRDD[T: ClassTag](prev: RDD[T]) extends RDD[(T, Long)](prev) {
+  name = this.getClass().getName
 
   /** The start index of each partition. */
   @transient private val startIndices: Array[Long] = {

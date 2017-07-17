@@ -52,6 +52,7 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
     @transient var rdd2: RDD[_ <: Product2[K, W]],
     part: Partitioner)
   extends RDD[(K, V)](rdd1.context, Nil) {
+  name = this.getClass().getName
 
 
   override def getDependencies: Seq[Dependency[_]] = {

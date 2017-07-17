@@ -38,12 +38,13 @@ import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.internal.Logging
 import org.apache.spark.network.util.JavaUtils
 import org.apache.spark.partial.{ApproximateActionListener, ApproximateEvaluator, PartialResult}
-import org.apache.spark.rdd.RDD
+import org.apache.spark.rdd.{RDD, CoGroupedRDD, MapPartitionsRDD, ShuffledRDD}
 import org.apache.spark.rpc.RpcTimeout
 import org.apache.spark.storage._
 import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
 import org.apache.spark.util._
 import org.apache.log4j.LogManager
+import org.apache.log4j.Logger
 
 /**
  * The high-level scheduling layer that implements stage-oriented scheduling. It computes a DAG of
@@ -188,6 +189,7 @@ class DAGScheduler(
   /** If enabled, FetchFailed will not cause stage retry, in order to surface the problem. */
   private val disallowStageRetryForTest = sc.getConf.getBoolean("spark.test.noStageRetry", false)
 
+  private val printPartition = sc.getConf.getBoolean("spark.selflog.TaskSentBreakDownPartition", false)
   private val printBC = sc.getConf.getBoolean("spark.selflog.BlockTransfer", false)
 
   private val messageScheduler =
@@ -930,6 +932,26 @@ class DAGScheduler(
     }
   }
 
+  private def printAllDep(rdd: RDD[_], logger: Logger) {
+    logger.info(s"TempLog: Task RDD type ${rdd.name}, ${rdd.id}")
+    rdd match {
+      case mapRdd: MapPartitionsRDD[_, _] =>
+        printAllDep(mapRdd.dependencies.head.rdd, logger)
+      case coRdd: CoGroupedRDD[_] =>
+        coRdd.rdds.zipWithIndex.map { case (subrdd, j) =>
+          coRdd.dependencies(j) match {
+            case s: ShuffleDependency[_, _, _] =>
+              None
+            case _ =>
+              printAllDep(subrdd, logger)
+          }
+        }
+      case suRdd: ShuffledRDD[_, _, _] =>
+      case _ =>
+        logger.info(s"TempLog: Task RDD type uncatched ${rdd.name}, ${rdd.id}")
+    }
+  }
+
   /** Called when stage's parents are available and we can now do its task. */
   private def submitMissingTasks(stage: Stage, jobId: Int) {
     logDebug("submitMissingTasks(" + stage + ")")
@@ -977,6 +999,9 @@ class DAGScheduler(
     stage.makeNewStageAttempt(partitionsToCompute.size, taskIdToLocations.values.toSeq)
     listenerBus.post(SparkListenerStageSubmitted(stage.latestInfo, properties))
     val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+    if (printPartition) {
+      printAllDep(stage.rdd, network_log)
+    }
 
     // TODO: Maybe we can keep the taskBinary in Stage to avoid serializing it multiple times.
     // Broadcasted binary for the task, used to dispatch tasks to executors. Note that we broadcast

@@ -37,6 +37,7 @@ private[spark] class ReliableCheckpointRDD[T: ClassTag](
     val checkpointPath: String,
     _partitioner: Option[Partitioner] = None
   ) extends CheckpointRDD[T](sc) {
+  name = this.getClass().getName
 
   @transient private val hadoopConf = sc.hadoopConfiguration
   @transient private val cpath = new Path(checkpointPath)

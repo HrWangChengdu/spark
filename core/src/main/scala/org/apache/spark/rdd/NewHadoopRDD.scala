@@ -73,6 +73,7 @@ class NewHadoopRDD[K, V](
     valueClass: Class[V],
     @transient private val _conf: Configuration)
   extends RDD[(K, V)](sc, Nil) with Logging {
+  name = this.getClass().getName
 
   // A Hadoop Configuration can be about 10 KB, which is pretty big, so broadcast it
   private val confBroadcast = sc.broadcast(new SerializableConfiguration(_conf))

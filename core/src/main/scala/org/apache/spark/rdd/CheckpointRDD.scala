@@ -32,6 +32,7 @@ private[spark] class CheckpointRDDPartition(val index: Int) extends Partition
 private[spark] abstract class CheckpointRDD[T: ClassTag](sc: SparkContext)
   extends RDD[T](sc, Nil) {
 
+  name = this.getClass().getName
   // CheckpointRDD should not be checkpointed again
   override def doCheckpoint(): Unit = { }
   override def checkpoint(): Unit = { }

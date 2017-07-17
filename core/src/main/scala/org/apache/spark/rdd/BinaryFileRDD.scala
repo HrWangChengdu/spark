@@ -34,6 +34,8 @@ private[spark] class BinaryFileRDD[T](
     minPartitions: Int)
   extends NewHadoopRDD[String, T](sc, inputFormatClass, keyClass, valueClass, conf) {
 
+  name = this.getClass().getName
+
   override def getPartitions: Array[Partition] = {
     val inputFormat = inputFormatClass.newInstance
     val conf = getConf
