@@ -458,6 +458,8 @@ class DAGScheduler(
                 waitingForVisit.push(narrowDep.rdd)
             }
           }
+        } else {
+          logInfo("Rdd has cached partitions: " + stage.rdd)
         }
       }
     }
