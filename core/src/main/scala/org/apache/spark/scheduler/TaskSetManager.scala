@@ -59,6 +59,8 @@ private[spark] class TaskSetManager(
   // Quantile of tasks at which to start speculation
   val SPECULATION_QUANTILE = conf.getDouble("spark.speculation.quantile", 0.75)
   val SPECULATION_MULTIPLIER = conf.getDouble("spark.speculation.multiplier", 1.5)
+  val genSubgraphOpt: Boolean = conf.getBoolean("spark.selfopt.GenSubgraph", false)
+  val useSubgraphOpt: Boolean = conf.getBoolean("spark.selfopt.UseSubgraph", false)
 
   // Limit of bytes for total size of results (default is 1GB)
   val maxResultSize = Utils.getMaxResultSize(conf)
@@ -434,6 +436,16 @@ private[spark] class TaskSetManager(
       dequeueTask(execId, host, allowedLocality).map { case ((index, taskLocality, speculative)) =>
         // Found a task; do some bookkeeping and return a task description
         val task = tasks(index)
+
+        logInfo(s"SubGraph Info genSubgraphOpt: $genSubgraphOpt useSubgraphOpt $useSubgraphOpt")
+        if (genSubgraphOpt && useSubgraphOpt) {
+          if (numFailures(index) == 0) {
+            task.useSubgraphPartition(taskSet.subgraphPartitions(index))
+          } else if (numFailures(index) == 1) {
+            // TODO: seperate subgraph failures from others
+            task.restoreToFullPartition()
+          }
+        }
         val taskId = sched.newTaskId()
         // Do various bookkeeping
         copiesRunning(index) += 1
@@ -774,6 +786,11 @@ TempLog: TaskSent metricSize $metricSize""")
           tasksSuccessful += 1
         }
         isZombie = true
+        None
+
+      case subgraphFailed: SubgraphFailed =>
+        logWarning(failureReason)
+        // Do not change isZombie flag
         None
 
       case ef: ExceptionFailure =>

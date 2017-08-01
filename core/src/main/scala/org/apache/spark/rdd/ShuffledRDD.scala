@@ -29,6 +29,12 @@ private[spark] class ShuffledRDDPartition(val idx: Int) extends Partition {
   override def hashCode(): Int = index
 
   override def equals(other: Any): Boolean = super.equals(other)
+
+  override def shallowCopy(): Partition = {
+    val part =  new ShuffledRDDPartition(idx)
+    part.isShallow = true
+    return part
+  }
 }
 
 /**
@@ -99,6 +105,10 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
     Array.tabulate[Partition](part.numPartitions)(i => new ShuffledRDDPartition(i))
   }
 
+  override def getSubgraphPartitions(existingRdds: List[RDD[_]]): Array[Partition] = {
+    getPartitions
+  }
+
   override protected def getPreferredLocations(partition: Partition): Seq[String] = {
     val tracker = SparkEnv.get.mapOutputTracker.asInstanceOf[MapOutputTrackerMaster]
     val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
@@ -106,6 +116,10 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
   }
 
   override def compute(split: Partition, context: TaskContext): Iterator[(K, C)] = {
+    // Partition in compute() should not be shallow
+    if (split.isShallow) {
+      throw new SubgraphPartitionException(id, name)
+    }
     val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
     SparkEnv.get.shuffleManager.getReader(dep.shuffleHandle, split.index, split.index + 1, context)
       .read()

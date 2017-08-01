@@ -55,4 +55,9 @@ private[spark] class WholeTextFileRDD(
     }
     result
   }
+
+  // Haoran: This doesn't need shallow copy. As it doesn't contain further RDDs
+  override def getSubgraphPartitions(existingRdds: List[RDD[_]]): Array[Partition] = {
+    return getPartitions
+  }
 }

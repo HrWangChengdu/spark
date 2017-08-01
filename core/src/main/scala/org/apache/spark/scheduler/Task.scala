@@ -65,6 +65,14 @@ private[spark] abstract class Task[T](
     val appId: Option[String] = None,
     val appAttemptId: Option[String] = None) extends Serializable {
 
+  @transient var fullPartition: Partition = null
+
+  def useSubgraphPartition(subgraphPartition: Partition) {
+  }
+
+  def restoreToFullPartition() {
+  }
+
   /**
    * Called by [[org.apache.spark.executor.Executor]] to run this task.
    *

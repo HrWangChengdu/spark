@@ -124,6 +124,11 @@ abstract class RDD[T: ClassTag](
    *   `rdd.partitions.zipWithIndex.forall { case (partition, index) => partition.index == index }`
    */
   protected def getPartitions: Array[Partition]
+  protected def getSubgraphPartitions(existingRdds: List[RDD[_]]): Array[Partition] = {
+    throw new UnsupportedOperationException(
+      "Undefined getSubgraphPartitions")
+  }
+
 
   /**
    * Implemented by subclasses to return how this RDD depends on parent RDDs. This method will only
@@ -226,6 +231,9 @@ abstract class RDD[T: ClassTag](
   // be overwritten when we're checkpointed
   private var dependencies_ : Seq[Dependency[_]] = null
   @transient private var partitions_ : Array[Partition] = null
+  @transient private var showllowPartitions_ : Array[Partition] = null
+  @transient private var subgraphPartitions_ : Array[Partition] = null
+  @transient private var cachedRddList_ : List[RDD[_]] = null
 
   /** An Option holding our checkpoint RDD, if we are checkpointed */
   private def checkpointRDD: Option[CheckpointRDD[T]] = checkpointData.flatMap(_.checkpointRDD)
@@ -258,6 +266,32 @@ abstract class RDD[T: ClassTag](
       }
       partitions_
     }
+  }
+
+  final def shallowCopyPartitions(): Array[Partition] = {
+    if (showllowPartitions_ == null) {
+      showllowPartitions_ = new Array[Partition](partitions.length)
+      for (i <- 0 until showllowPartitions_.length) {
+        showllowPartitions_(i) = partitions(i).shallowCopy()
+      }
+    }
+    showllowPartitions_
+  }
+
+  /**
+   * Get the array of subgraph partitions of this RDD
+   * TODO: Not taking into account whether the RDD is checkpointed or not.
+   */
+  final def subgraphPartitions(existingRDDs: List[RDD[_]]): Array[Partition] = {
+    if (subgraphPartitions_ == null || cachedRddList_ != existingRDDs) {
+      cachedRddList_ = existingRDDs
+      subgraphPartitions_ = getSubgraphPartitions(existingRDDs)
+      subgraphPartitions_.zipWithIndex.foreach { case (partition, index) =>
+        require(partition.index == index,
+          s"partitions($index).partition == ${partition.index}, but it should equal $index")
+      }
+    }
+   subgraphPartitions_
   }
 
   /**

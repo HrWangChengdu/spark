@@ -17,6 +17,7 @@
 
 package org.apache.spark.scheduler
 
+import org.apache.spark.Partition
 import java.util.Properties
 
 /**
@@ -28,7 +29,8 @@ private[spark] class TaskSet(
     val stageId: Int,
     val stageAttemptId: Int,
     val priority: Int,
-    val properties: Properties) {
+    val properties: Properties,
+    val subgraphPartitions: Array[Partition] = null) {
   val id: String = stageId + "." + stageAttemptId
 
   override def toString: String = "TaskSet " + id

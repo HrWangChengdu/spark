@@ -46,6 +46,12 @@ private[spark] class ParallelCollectionPartition[T: ClassTag](
     case _ => false
   }
 
+  override def shallowCopy(): Partition = {
+    val part =  new ParallelCollectionPartition(rddId, slice, values)
+    part.isShallow = true
+    return part
+  }
+
   override def index: Int = slice
 
   @throws(classOf[IOException])
@@ -101,7 +107,16 @@ private[spark] class ParallelCollectionRDD[T: ClassTag](
     slices.indices.map(i => new ParallelCollectionPartition(id, i, slices(i))).toArray
   }
 
+  // Haoran: This doesn't need shallow copy. As it doesn't contain further RDDs
+  override def getSubgraphPartitions(existingRdds: List[RDD[_]]): Array[Partition] = {
+    return getPartitions
+  }
+
   override def compute(s: Partition, context: TaskContext): Iterator[T] = {
+    // Partition in compute() should not be shallow
+    if (s.isShallow) {
+      throw new SubgraphPartitionException(id, name)
+    }
     new InterruptibleIterator(context, s.asInstanceOf[ParallelCollectionPartition[T]].iterator)
   }
 

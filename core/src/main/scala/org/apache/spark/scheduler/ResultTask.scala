@@ -55,7 +55,7 @@ private[spark] class ResultTask[T, U](
     stageId: Int,
     stageAttemptId: Int,
     val taskBinary: Broadcast[Array[Byte]],
-    val partition: Partition,
+    var partition: Partition,
     val locs: Seq[TaskLocation],
     val outputId: Int,
     localProperties: Properties,
@@ -69,6 +69,18 @@ private[spark] class ResultTask[T, U](
 
   @transient private[this] val preferredLocs: Seq[TaskLocation] = {
     if (locs == null) Nil else locs.toSet.toSeq
+  }
+
+  override def useSubgraphPartition(subgraphPartition: Partition) {
+    assert(fullPartition == null)
+    fullPartition = partition 
+    partition = subgraphPartition
+  }
+
+  override def restoreToFullPartition() {
+    assert(fullPartition != null)
+    partition = fullPartition
+    fullPartition = null
   }
 
   override def runTask(context: TaskContext): U = {

@@ -385,6 +385,11 @@ private[spark] class Executor(
           setTaskFinishedAndClearInterruptStatus()
           execBackend.statusUpdate(taskId, TaskState.KILLED, ser.serialize(TaskKilled))
 
+        case sPE: SubgraphPartitionException =>
+          val reason = sPE.toTaskFailedReason
+          setTaskFinishedAndClearInterruptStatus()
+          execBackend.statusUpdate(taskId, TaskState.FAILED, ser.serialize(reason))
+
         case CausedBy(cDE: CommitDeniedException) =>
           val reason = cDE.toTaskFailedReason
           setTaskFinishedAndClearInterruptStatus()

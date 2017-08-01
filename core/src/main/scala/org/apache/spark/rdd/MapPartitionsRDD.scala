@@ -19,7 +19,7 @@ package org.apache.spark.rdd
 
 import scala.reflect.ClassTag
 
-import org.apache.spark.{Partition, TaskContext}
+import org.apache.spark.{Partition, TaskContext, SubgraphPartitionException}
 
 /**
  * An RDD that applies the provided function to every partition of the parent RDD.
@@ -34,10 +34,23 @@ private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
 
   override val partitioner = if (preservesPartitioning) firstParent[T].partitioner else None
 
+  override def getSubgraphPartitions(existingRdds: List[RDD[_]]): Array[Partition] = {
+    if (existingRdds.contains(this)) {
+      shallowCopyPartitions()
+    } else {
+      firstParent[T].subgraphPartitions(existingRdds)
+    }
+  }
+
   override def getPartitions: Array[Partition] = firstParent[T].partitions
 
-  override def compute(split: Partition, context: TaskContext): Iterator[U] =
+  override def compute(split: Partition, context: TaskContext): Iterator[U] = {
+    // Partition in compute() should not be shallow
+    if (split.isShallow) {
+      throw new SubgraphPartitionException(id, name)
+    }
     f(context, split.index, firstParent[T].iterator(split, context))
+  }
 
   override def clearDependencies() {
     super.clearDependencies()

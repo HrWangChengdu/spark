@@ -56,7 +56,7 @@ private[spark] class ShuffleMapTask(
     stageId: Int,
     stageAttemptId: Int,
     val taskBinary: Broadcast[Array[Byte]],
-    val partition: Partition,
+    var partition: Partition,
     @transient private var locs: Seq[TaskLocation],
     metrics: TaskMetrics,
     localProperties: Properties,
@@ -66,6 +66,18 @@ private[spark] class ShuffleMapTask(
   extends Task[MapStatus](stageId, stageAttemptId, partition.index, metrics, localProperties, jobId,
     appId, appAttemptId)
   with Logging {
+
+  override def useSubgraphPartition(subgraphPartition: Partition) {
+    assert(fullPartition == null)
+    fullPartition = partition
+    partition = subgraphPartition
+  }
+
+  override def restoreToFullPartition() {
+    assert(fullPartition != null)
+    partition = fullPartition
+    fullPartition = null
+  }
 
   /** A constructor used only in test suites. This does not require passing in an RDD. */
   def this(partitionId: Int) {

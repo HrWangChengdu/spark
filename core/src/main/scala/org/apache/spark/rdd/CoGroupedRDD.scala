@@ -62,6 +62,12 @@ private[spark] class CoGroupPartition(
   extends Partition with Serializable {
   override def hashCode(): Int = index
   override def equals(other: Any): Boolean = super.equals(other)
+
+  override def shallowCopy(): Partition = {
+    val part =  new CoGroupPartition(index, null)
+    part.isShallow = true
+    return part
+  }
 }
 
 /**
@@ -128,11 +134,38 @@ class CoGroupedRDD[K: ClassTag](
     array
   }
 
+  override def getSubgraphPartitions(existingRdds: List[RDD[_]]): Array[Partition] = {
+    if (existingRdds.contains(this)) {
+      shallowCopyPartitions()
+    } else {
+      val array = new Array[Partition](part.numPartitions)
+      for (i <- 0 until array.length) {
+        // Each CoGroupPartition will have a dependency per contributing RDD
+        array(i) = new CoGroupPartition(i, rdds.zipWithIndex.map { case (rdd, j) =>
+          // Assume each RDD contributed a single dependency, and get it
+          dependencies(j) match {
+            case s: ShuffleDependency[_, _, _] =>
+              None
+            case _ =>
+              Some(new NarrowCoGroupSplitDep(rdd, i, rdd.subgraphPartitions(existingRdds)(i)))
+          }
+        }.toArray)
+      }
+      array
+    }
+  }
+
+
   override val partitioner: Some[Partitioner] = Some(part)
 
   override def compute(s: Partition, context: TaskContext): Iterator[(K, Array[Iterable[_]])] = {
     val split = s.asInstanceOf[CoGroupPartition]
     val numRdds = dependencies.length
+
+    // Partition in compute() should not be shallow
+    if (s.isShallow) {
+      throw new SubgraphPartitionException(id, name)
+    }
 
     // A list of (rdd iterator, dependency number) pairs
     val rddIterators = new ArrayBuffer[(Iterator[Product2[K, Any]], Int)]

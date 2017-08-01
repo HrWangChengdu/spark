@@ -50,6 +50,13 @@ private[spark] class NewHadoopPartition(
   override def hashCode(): Int = 31 * (31 + rddId) + index
 
   override def equals(other: Any): Boolean = super.equals(other)
+
+  override def shallowCopy(): Partition = {
+    val part =  new NewHadoopPartition(rddId, index, rawSplit)
+    part.isShallow = true
+    return part
+  }
+
 }
 
 /**
@@ -131,7 +138,16 @@ class NewHadoopRDD[K, V](
     result
   }
 
+  // Haoran: This doesn't need shallow copy. As it doesn't contain further RDDs
+  override def getSubgraphPartitions(existingRdds: List[RDD[_]]): Array[Partition] = {
+    return getPartitions
+  }
+
   override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[(K, V)] = {
+    // Partition in compute() should not be shallow
+    if (theSplit.isShallow) {
+      throw new SubgraphPartitionException(id, name)
+    }
     val iter = new Iterator[(K, V)] {
       private val split = theSplit.asInstanceOf[NewHadoopPartition]
       logInfo("Input split: " + split.serializableHadoopSplit)

@@ -61,6 +61,12 @@ private[spark] class HadoopPartition(rddId: Int, override val index: Int, s: Inp
 
   override def equals(other: Any): Boolean = super.equals(other)
 
+  override def shallowCopy(): Partition = {
+    val part =  new HadoopPartition(rddId, index, s)
+    part.isShallow = true
+    return part
+  }
+
   /**
    * Get any environment variables that should be added to the users environment when running pipes
    * @return a Map with the environment variables and corresponding values, it could be empty
@@ -208,7 +214,17 @@ class HadoopRDD[K, V](
     array
   }
 
+  // Haoran: This doesn't need shallow copy. As it doesn't contain further RDDs
+  override def getSubgraphPartitions(existingRdds: List[RDD[_]]): Array[Partition] = {
+    return getPartitions
+  }
+
   override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[(K, V)] = {
+    // Partition in compute() should not be shallow
+    if (theSplit.isShallow) {
+      throw new SubgraphPartitionException(id, name)
+    }
+
     val iter = new NextIterator[(K, V)] {
 
       private val split = theSplit.asInstanceOf[HadoopPartition]

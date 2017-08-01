@@ -17,23 +17,18 @@
 
 package org.apache.spark
 
+
+import org.apache.spark._
+import org.apache.spark.annotation.DeveloperApi
+
 /**
- * An identifier for a partition in an RDD.
+ * :: DeveloperApi ::
+ * Exception thrown when the assumption on subgraph partition breaks (i.e., the node fails and lost some of the computed rdds).
  */
-trait Partition extends Serializable {
-  /**
-   * Get the partition's index within its parent RDD
-   */
-  def index: Int
-  var isShallow: Boolean = false
+@DeveloperApi
+class SubgraphPartitionException(
+  rddId: Int,
+  rddName: String) extends Exception {
 
-  def shallowCopy(): Partition = {
-    throw new Exception("shallow copy not defined")
-    null
-  }
-
-  // A better default implementation of HashCode
-  override def hashCode(): Int = index
-
-  override def equals(other: Any): Boolean = super.equals(other)
+  def toTaskFailedReason: TaskFailedReason = SubgraphFailed(rddId, rddName)
 }

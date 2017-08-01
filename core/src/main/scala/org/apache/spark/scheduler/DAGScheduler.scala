@@ -189,8 +189,10 @@ class DAGScheduler(
   /** If enabled, FetchFailed will not cause stage retry, in order to surface the problem. */
   private val disallowStageRetryForTest = sc.getConf.getBoolean("spark.test.noStageRetry", false)
 
-  private val printPartition = sc.getConf.getBoolean("spark.selflog.TaskSentBreakDownPartition", false)
-  private val printBC = sc.getConf.getBoolean("spark.selflog.BlockTransfer", false)
+  private val printPartition: Boolean = sc.getConf.getBoolean("spark.selflog.TaskSentBreakDownPartition", false)
+  private val printBC: Boolean = sc.getConf.getBoolean("spark.selflog.BlockTransfer", false)
+  private val genSubgraphOpt: Boolean = sc.getConf.getBoolean("spark.selfopt.GenSubgraph", false)
+  private val printExistingParents: Boolean = sc.getConf.getBoolean("spark.selflog.PrintExistParentRDDs", false)
 
   private val messageScheduler =
     ThreadUtils.newDaemonSingleThreadScheduledExecutor("dag-scheduler-message")
@@ -468,6 +470,39 @@ class DAGScheduler(
       visit(waitingForVisit.pop())
     }
     missing.toList
+  }
+
+  private def getExistingParentRDDs(stage: Stage) : List[RDD[_]] = {
+    val existing = new HashSet[RDD[_]]
+    val visited = new HashSet[RDD[_]]
+    // We are manually maintaining a stack here to prevent StackOverflowError
+    // caused by recursively visiting
+    val waitingForVisit = new Stack[RDD[_]]
+    def visit(rdd: RDD[_]) {
+      if (!visited(rdd)) {
+        visited += rdd
+        val rddHasUncachedPartitions = getCacheLocs(rdd).contains(Nil)
+        if (rddHasUncachedPartitions) {
+          for (dep <- rdd.dependencies) {
+            dep match {
+              case shufDep: ShuffleDependency[_, _, _] =>
+                val mapStage = getOrCreateShuffleMapStage(shufDep, stage.firstJobId)
+                assert(mapStage.isAvailable)
+                existing += stage.rdd
+              case narrowDep: NarrowDependency[_] =>
+                waitingForVisit.push(narrowDep.rdd)
+            }
+          }
+        } else {
+          existing += rdd
+        }
+      }
+    }
+    waitingForVisit.push(stage.rdd)
+    while (waitingForVisit.nonEmpty) {
+      visit(waitingForVisit.pop())
+    }
+    existing.toList
   }
 
   /**
@@ -911,6 +946,14 @@ class DAGScheduler(
     }
   }
 
+  private def printExistingParentRDDs(stage_rdd: RDD[_], rdds: List[RDD[_]]) {
+    val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+    network_log.info(s"TempLog: Target RDD is ${stage_rdd.id}")
+    for (rdd <- rdds) {
+      network_log.info(s"TempLog: Existing Parent RDD ${rdd.id}")
+    }
+  }
+
   /** Submits stage, but first recursively submits any missing parents. */
   private def submitStage(stage: Stage) {
     val jobId = activeJobForStage(stage)
@@ -921,7 +964,15 @@ class DAGScheduler(
         logDebug("missing: " + missing)
         if (missing.isEmpty) {
           logInfo("Submitting " + stage + " (" + stage.rdd + "), which has no missing parents")
-          submitMissingTasks(stage, jobId.get)
+          if (genSubgraphOpt) {
+            val rdds = getExistingParentRDDs(stage)
+            if (printExistingParents) {
+              printExistingParentRDDs(stage.rdd, rdds)
+            }
+            submitMissingTasks(stage, jobId.get, rdds)
+          } else {
+            submitMissingTasks(stage, jobId.get, null)
+          }
         } else {
           for (parent <- missing) {
             submitStage(parent)
@@ -955,7 +1006,7 @@ class DAGScheduler(
   }
 
   /** Called when stage's parents are available and we can now do its task. */
-  private def submitMissingTasks(stage: Stage, jobId: Int) {
+  private def submitMissingTasks(stage: Stage, jobId: Int, existingRDDs: List[RDD[_]]) {
     logDebug("submitMissingTasks(" + stage + ")")
     // Get our pending tasks and remember them in our pendingTasks entry
     stage.pendingPartitions.clear()
@@ -1086,8 +1137,15 @@ class DAGScheduler(
       logInfo("Submitting " + tasks.size + " missing tasks from " + stage + " (" + stage.rdd + ")")
       stage.pendingPartitions ++= tasks.map(_.partitionId)
       logDebug("New pending partitions: " + stage.pendingPartitions)
-      taskScheduler.submitTasks(new TaskSet(
-        tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties))
+
+      logInfo(s"SubGraph Info genSubgraphOpt: $genSubgraphOpt")
+      if (genSubgraphOpt) {
+        taskScheduler.submitTasks(new TaskSet(
+          tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties, stage.rdd.subgraphPartitions(existingRDDs)))
+      } else {
+        taskScheduler.submitTasks(new TaskSet(
+          tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties, null))
+      }
       stage.latestInfo.submissionTime = Some(clock.getTimeMillis())
     } else {
       // Because we posted SparkListenerStageSubmitted earlier, we should mark
@@ -1225,6 +1283,7 @@ class DAGScheduler(
             }
 
           case smt: ShuffleMapTask =>
+            // Executor Level Result
             val shuffleStage = stage.asInstanceOf[ShuffleMapStage]
             updateAccumulators(event)
             val status = event.result.asInstanceOf[MapStatus]
