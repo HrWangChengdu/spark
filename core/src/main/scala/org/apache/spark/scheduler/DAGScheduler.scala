@@ -488,7 +488,7 @@ class DAGScheduler(
               case shufDep: ShuffleDependency[_, _, _] =>
                 val mapStage = getOrCreateShuffleMapStage(shufDep, stage.firstJobId)
                 assert(mapStage.isAvailable)
-                existing += stage.rdd
+                existing += mapStage.rdd
               case narrowDep: NarrowDependency[_] =>
                 waitingForVisit.push(narrowDep.rdd)
             }
