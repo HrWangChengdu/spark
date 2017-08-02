@@ -52,7 +52,7 @@ private[spark] class NewHadoopPartition(
   override def equals(other: Any): Boolean = super.equals(other)
 
   override def shallowCopy(): Partition = {
-    val part =  new NewHadoopPartition(rddId, index, rawSplit)
+    val part =  new NewHadoopPartition(rddId, index, null)
     part.isShallow = true
     return part
   }
