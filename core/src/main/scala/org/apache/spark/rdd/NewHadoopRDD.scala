@@ -140,7 +140,7 @@ class NewHadoopRDD[K, V](
 
   // Haoran: This doesn't need shallow copy. As it doesn't contain further RDDs
   override def getSubgraphPartitions(existingRdds: List[RDD[_]]): Array[Partition] = {
-    return getPartitions
+    getPartitions
   }
 
   override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[(K, V)] = {
