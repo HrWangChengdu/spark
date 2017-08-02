@@ -1407,6 +1407,9 @@ class DAGScheduler(
       case _: ExecutorLostFailure | TaskKilled | UnknownReason =>
         // Unrecognized failure - also do nothing. If the task fails repeatedly, the TaskScheduler
         // will abort the job.
+
+      case subgraphFailed: SubgraphFailed =>
+        // Do nothing; the TaskScheduler is handled by resubmitting
     }
   }
 
