@@ -66,7 +66,7 @@ private[spark] class CoGroupPartition(
   override def shallowCopy(): Partition = {
     val part =  new CoGroupPartition(index, null)
     part.isShallow = true
-    return part
+    part
   }
 }
 
@@ -136,7 +136,7 @@ class CoGroupedRDD[K: ClassTag](
 
   override def getSubgraphPartitions(existingRdds: List[RDD[_]]): Array[Partition] = {
     if (existingRdds.contains(this)) {
-      shallowCopyPartitions()
+      shallowCopyPartitions
     } else {
       val array = new Array[Partition](part.numPartitions)
       for (i <- 0 until array.length) {

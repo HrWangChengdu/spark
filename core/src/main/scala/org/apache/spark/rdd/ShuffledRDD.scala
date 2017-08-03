@@ -33,7 +33,7 @@ private[spark] class ShuffledRDDPartition(val idx: Int) extends Partition {
   override def shallowCopy(): Partition = {
     val part =  new ShuffledRDDPartition(idx)
     part.isShallow = true
-    return part
+    part
   }
 }
 

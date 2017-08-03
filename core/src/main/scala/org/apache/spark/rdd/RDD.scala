@@ -42,6 +42,7 @@ import org.apache.spark.partial.PartialResult
 import org.apache.spark.storage.{RDDBlockId, StorageLevel}
 import org.apache.spark.util.{BoundedPriorityQueue, Utils}
 import org.apache.spark.util.collection.OpenHashMap
+import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.util.random.{BernoulliCellSampler, BernoulliSampler, PoissonSampler,
   SamplingUtils}
 import org.apache.log4j.{Level, LogManager, PropertyConfigurator}
@@ -230,8 +231,9 @@ abstract class RDD[T: ClassTag](
   // Our dependencies and partitions will be gotten by calling subclass's methods below, and will
   // be overwritten when we're checkpointed
   private var dependencies_ : Seq[Dependency[_]] = null
+  // @transient protected val tmp_ser: SerializerInstance = SparkEnv.get.taskSentSerializer.newInstance()
   @transient private var partitions_ : Array[Partition] = null
-  @transient private var showllowPartitions_ : Array[Partition] = null
+  @transient private var shawllowPartitions_ : Array[Partition] = null
   @transient private var subgraphPartitions_ : Array[Partition] = null
   @transient private var cachedRddList_ : List[RDD[_]] = null
 
@@ -269,13 +271,13 @@ abstract class RDD[T: ClassTag](
   }
 
   final def shallowCopyPartitions(): Array[Partition] = {
-    if (showllowPartitions_ == null) {
-      showllowPartitions_ = new Array[Partition](partitions.length)
-      for (i <- 0 until showllowPartitions_.length) {
-        showllowPartitions_(i) = partitions(i).shallowCopy()
+    if (shawllowPartitions_ == null) {
+      shawllowPartitions_ = new Array[Partition](partitions.length)
+      for (i <- 0 until shawllowPartitions_.length) {
+        shawllowPartitions_(i) = partitions(i).shallowCopy()
       }
     }
-    showllowPartitions_
+    shawllowPartitions_
   }
 
   /**
@@ -291,7 +293,7 @@ abstract class RDD[T: ClassTag](
           s"partitions($index).partition == ${partition.index}, but it should equal $index")
       }
     }
-   subgraphPartitions_
+    subgraphPartitions_
   }
 
   /**

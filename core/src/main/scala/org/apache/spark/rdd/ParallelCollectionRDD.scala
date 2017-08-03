@@ -49,7 +49,7 @@ private[spark] class ParallelCollectionPartition[T: ClassTag](
   override def shallowCopy(): Partition = {
     val part =  new ParallelCollectionPartition(rddId, slice, values)
     part.isShallow = true
-    return part
+    part
   }
 
   override def index: Int = slice
@@ -109,7 +109,7 @@ private[spark] class ParallelCollectionRDD[T: ClassTag](
 
   // Haoran: This doesn't need shallow copy. As it doesn't contain further RDDs
   override def getSubgraphPartitions(existingRdds: List[RDD[_]]): Array[Partition] = {
-    return getPartitions
+    getPartitions
   }
 
   override def compute(s: Partition, context: TaskContext): Iterator[T] = {

@@ -64,7 +64,7 @@ private[spark] class HadoopPartition(rddId: Int, override val index: Int, s: Inp
   override def shallowCopy(): Partition = {
     val part =  new HadoopPartition(rddId, index, null)
     part.isShallow = true
-    return part
+    part
   }
 
   /**

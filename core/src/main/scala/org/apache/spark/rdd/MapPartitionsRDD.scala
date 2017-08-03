@@ -36,7 +36,7 @@ private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
 
   override def getSubgraphPartitions(existingRdds: List[RDD[_]]): Array[Partition] = {
     if (existingRdds.contains(this)) {
-      shallowCopyPartitions()
+      shallowCopyPartitions
     } else {
       firstParent[T].subgraphPartitions(existingRdds)
     }
@@ -45,10 +45,11 @@ private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
   override def getPartitions: Array[Partition] = firstParent[T].partitions
 
   override def compute(split: Partition, context: TaskContext): Iterator[U] = {
-    // Partition in compute() should not be shallow
-    if (split.isShallow) {
-      throw new SubgraphPartitionException(id, name)
-    }
+    // Note: the shallow check is commented in purpose.
+    // Leave it to its parent's computation
+    // if (split.isShallow) {
+    //   throw new SubgraphPartitionException(id, name)
+    // }
     f(context, split.index, firstParent[T].iterator(split, context))
   }
 
