@@ -189,7 +189,7 @@ class DAGScheduler(
   /** If enabled, FetchFailed will not cause stage retry, in order to surface the problem. */
   private val disallowStageRetryForTest = sc.getConf.getBoolean("spark.test.noStageRetry", false)
 
-  private val printPartition: Boolean = sc.getConf.getBoolean("spark.selflog.TaskSentBreakDownPartition", false)
+  private val printPartition: Boolean = sc.getConf.getBoolean("spark.selflog.TaskSentBreakDownWholeGraphPartition", false)
   private val printBC: Boolean = sc.getConf.getBoolean("spark.selflog.BlockTransfer", false)
   private val genSubgraphOpt: Boolean = sc.getConf.getBoolean("spark.selfopt.GenSubgraph", false)
   private val printExistingParents: Boolean = sc.getConf.getBoolean("spark.selflog.PrintExistParentRDDs", false)
@@ -503,6 +503,41 @@ class DAGScheduler(
       visit(waitingForVisit.pop())
     }
     existing.toList
+  }
+
+  private def printGetExistingParentRDDs(stage: Stage, logger: Logger) {
+    val visited = new HashSet[RDD[_]]
+    // We are manually maintaining a stack here to prevent StackOverflowError
+    // caused by recursively visiting
+    val waitingForVisit = new Stack[RDD[_]]
+    logger.info(s"getExistingParentRDDs stat with ${stage.rdd.id}")
+    def visit(rdd: RDD[_]) {
+      if (!visited(rdd)) {
+        visited += rdd
+        logger.info(s"visiting ${rdd.id}")
+        val rddHasUncachedPartitions = getCacheLocs(rdd).contains(Nil)
+        if (rddHasUncachedPartitions) {
+          logger.info(s"rdd has uncached partitions ${rdd.id}")
+          for (dep <- rdd.dependencies) {
+            dep match {
+              case shufDep: ShuffleDependency[_, _, _] =>
+                val mapStage = getOrCreateShuffleMapStage(shufDep, stage.firstJobId)
+                assert(mapStage.isAvailable)
+                logger.info(s"Put to ${mapStage.rdd.id} existing by shuffleDep")
+              case narrowDep: NarrowDependency[_] =>
+                waitingForVisit.push(narrowDep.rdd)
+                logger.info(s"visit ${narrowDep.rdd.id} later by narrowdep")
+            }
+          }
+        } else {
+          logger.info(s"rdd doesn't have uncached partition ${rdd.id}")
+        }
+      }
+    }
+    waitingForVisit.push(stage.rdd)
+    while (waitingForVisit.nonEmpty) {
+      visit(waitingForVisit.pop())
+    }
   }
 
   /**
@@ -946,11 +981,10 @@ class DAGScheduler(
     }
   }
 
-  private def printExistingParentRDDs(stage_rdd: RDD[_], rdds: List[RDD[_]]) {
-    val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-    network_log.info(s"TempLog: Target RDD is ${stage_rdd.id}")
+  private def printExistingParentRDDs(stage_rdd: RDD[_], rdds: List[RDD[_]], logger: Logger) {
+    logger.info(s"TempLog: Target RDD is ${stage_rdd.id}")
     for (rdd <- rdds) {
-      network_log.info(s"TempLog: Existing Parent RDD ${rdd.id}")
+      logger.info(s"TempLog: Existing Parent RDD ${rdd.id}")
     }
   }
 
@@ -966,8 +1000,11 @@ class DAGScheduler(
           logInfo("Submitting " + stage + " (" + stage.rdd + "), which has no missing parents")
           if (genSubgraphOpt) {
             val rdds = getExistingParentRDDs(stage)
+
             if (printExistingParents) {
-              printExistingParentRDDs(stage.rdd, rdds)
+              val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+              printGetExistingParentRDDs(stage, network_log)
+              printExistingParentRDDs(stage.rdd, rdds, network_log)
             }
             submitMissingTasks(stage, jobId.get, rdds)
           } else {
