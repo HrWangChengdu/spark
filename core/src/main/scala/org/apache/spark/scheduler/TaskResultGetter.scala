@@ -37,6 +37,8 @@ private[spark] class TaskResultGetter(sparkEnv: SparkEnv, scheduler: TaskSchedul
   extends Logging {
 
   private val THREADS = sparkEnv.conf.getInt("spark.resultGetter.threads", 4)
+  private val printSUBreakdown:Boolean = sparkEnv.conf.getBoolean("spark.SUBreakDown", false)
+  private val printGeneral:Boolean = sparkEnv.conf.getBoolean("spark.selflog.General", false)
 
   // Exposed for testing.
   protected val getTaskResultExecutor: ExecutorService =
@@ -62,9 +64,10 @@ private[spark] class TaskResultGetter(sparkEnv: SparkEnv, scheduler: TaskSchedul
     getTaskResultExecutor.execute(new Runnable {
       override def run(): Unit = Utils.logUncaughtExceptions {
         try {
-          val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-          network_log.info(s"Task received byte: ${serializedData.limit()}")
-          logTrace(s"Task received byte: ${serializedData.limit()}")
+          if (printGeneral) {
+            val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+            network_log.info(s"Task received byte: ${serializedData.limit()}")
+          }
           val (result, size) = serializer.get().deserialize[TaskResult[_]](serializedData) match {
             case directResult: DirectTaskResult[_] =>
               if (!taskSetManager.canFetchMoreResults(serializedData.limit())) {
@@ -75,9 +78,10 @@ private[spark] class TaskResultGetter(sparkEnv: SparkEnv, scheduler: TaskSchedul
               // "TaskSetManager.handleSuccessfulTask", it does not need to deserialize the value.
               directResult.value(taskResultSerializer.get())
               // network_log.trace(s"TempLog: TaskResultGetter DirectResult: ${serializedData.limit()}")
-              if (sparkEnv.conf.getBoolean("spark.SUBreakDown", false)) {
+              if (printSUBreakdown) {
                 val size0 = directResult.valueBytes.limit
                 val size1 = taskResultSerializer.get().serialize(directResult.accumUpdates).limit
+                val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
                 network_log.info(
 s"""TempLog: SU dupData ${serializedData.limit()}
 TempLog: SU pureValue ${size0}

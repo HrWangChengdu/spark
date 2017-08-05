@@ -52,7 +52,6 @@ public final class MessageEncoder extends MessageToMessageEncoder<Message> {
     if (in.body() != null) {
       try {
         bodyLength = in.body().size();
-        logger.trace("Body info {} " + in);
         body = in.body().convertToNetty();
         isBodyInFrame = in.isBodyInFrame();
       } catch (Exception e) {
@@ -78,9 +77,8 @@ public final class MessageEncoder extends MessageToMessageEncoder<Message> {
     int headerLength = 8 + msgType.encodedLength() + in.encodedLength();
     long frameLength = headerLength + (isBodyInFrame ? bodyLength : 0);
 
-    org.apache.log4j.Logger network_log = org.apache.log4j.LogManager.getLogger("networkLogger");
-    network_log.info("Command sent byte: " + frameLength);
-    // network_log.info("Command header byte: " + headerLength);
+    //org.apache.log4j.Logger network_log = org.apache.log4j.LogManager.getLogger("networkLogger");
+    //network_log.info("Command sent byte: " + frameLength);
 
     ByteBuf header = ctx.alloc().heapBuffer(headerLength);
     header.writeLong(frameLength);

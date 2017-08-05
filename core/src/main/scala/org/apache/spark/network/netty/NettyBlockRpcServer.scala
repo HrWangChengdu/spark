@@ -23,6 +23,7 @@ import scala.collection.JavaConverters._
 import scala.language.existentials
 import scala.reflect.ClassTag
 
+import org.apache.spark.SparkEnv
 import org.apache.spark.internal.Logging
 import org.apache.spark.network.BlockDataManager
 import org.apache.spark.network.buffer.{ManagedBuffer, NioManagedBuffer}
@@ -47,6 +48,7 @@ class NettyBlockRpcServer(
   extends RpcHandler with Logging {
 
   private val streamManager = new OneForOneStreamManager()
+  private val printGeneral:Boolean = SparkEnv.get.conf.getBoolean("spark.selflog.General", false)
 
   override def receive(
       client: TransportClient,
@@ -61,8 +63,10 @@ class NettyBlockRpcServer(
           openBlocks.blockIds.map(BlockId.apply).map(blockManager.getBlockData)
         var sum: Long = 0
         blocks.foreach(sum += _.size())
-        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-        network_log.info(s"Block sent byte: $sum")
+        if (printGeneral) {
+          val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+          network_log.info(s"Block sent byte: $sum")
+        }
         logTrace(s"Block sent byte: $sum")
         val streamId = streamManager.registerStream(appId, blocks.iterator.asJava)
         logTrace(s"Registered streamId $streamId with ${blocks.size} buffers")
@@ -77,8 +81,10 @@ class NettyBlockRpcServer(
             .asInstanceOf[(StorageLevel, ClassTag[_])]
         }
         val data = new NioManagedBuffer(ByteBuffer.wrap(uploadBlock.blockData))
-        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-        network_log.info(s"Block received byte: ${data.size()}")
+        if (printGeneral) {
+          val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+          network_log.info(s"Block received byte: ${data.size()}")
+        }
         logTrace(s"Block received byte: ${data.size()}")
         val blockId = BlockId(uploadBlock.blockId)
         blockManager.putBlockData(blockId, data, level, classTag)

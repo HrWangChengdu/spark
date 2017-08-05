@@ -40,27 +40,36 @@ class BlockManagerSlaveEndpoint(
   private val asyncThreadPool =
     ThreadUtils.newDaemonCachedThreadPool("block-manager-slave-async-thread-pool")
   private implicit val asyncExecutionContext = ExecutionContext.fromExecutorService(asyncThreadPool)
+  // private val printGeneral:Boolean = SparkEnv.get.conf.getBoolean("spark.selflog.General", false)
+  private val printGeneral:Boolean = false
 
   // Operations that involve removing blocks may be slow and should be done asynchronously
   override def receiveAndReply(context: RpcCallContext, str: String="", logger: Logger=null): PartialFunction[Any, Unit] = {
     case RemoveBlock(blockId) =>
-      val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-      network_log.info(str + " category:RemoveBlock")
+
+      if (printGeneral) {
+        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        network_log.info(str + " category:RemoveBlock")
+      }
       doAsync[Boolean]("removing block " + blockId, context) {
         blockManager.removeBlock(blockId)
         true
       }
 
     case RemoveRdd(rddId) =>
-      val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-      network_log.info(str + " category:RemoveRdd")
+      if (printGeneral) {
+        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        network_log.info(str + " category:RemoveRdd")
+      }
       doAsync[Int]("removing RDD " + rddId, context) {
         blockManager.removeRdd(rddId)
       }
 
     case RemoveShuffle(shuffleId) =>
-      val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-      network_log.info(str + " category:RemoveShuffle")
+      if (printGeneral) {
+        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        network_log.info(str + " category:RemoveShuffle")
+      }
       doAsync[Boolean]("removing shuffle " + shuffleId, context) {
         if (mapOutputTracker != null) {
           mapOutputTracker.unregisterShuffle(shuffleId)
@@ -69,25 +78,33 @@ class BlockManagerSlaveEndpoint(
       }
 
     case RemoveBroadcast(broadcastId, _) =>
-      val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-      network_log.info(str + " category:RemoveBroadcast")
+      if (printGeneral) {
+        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        network_log.info(str + " category:RemoveBroadcast")
+      }
       doAsync[Int]("removing broadcast " + broadcastId, context) {
         blockManager.removeBroadcast(broadcastId, tellMaster = true)
       }
 
     case GetBlockStatus(blockId, _) =>
-      val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-      network_log.info(str + " category:GetBlockStatus")
+      if (printGeneral) {
+        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        network_log.info(str + " category:GetBlockStatus")
+      }
       context.reply(blockManager.getStatus(blockId))
 
     case GetMatchingBlockIds(filter, _) =>
-      val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-      network_log.info(str + " category:GetMatchingBlockIds")
+      if (printGeneral) {
+        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        network_log.info(str + " category:GetMatchingBlockIds")
+      }
       context.reply(blockManager.getMatchingBlockIds(filter))
 
     case TriggerThreadDump =>
-      val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-      network_log.info(str + " category:TriggerThreadDump")
+      if (printGeneral) {
+        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        network_log.info(str + " category:TriggerThreadDump")
+      }
       context.reply(Utils.getThreadDump())
   }
 

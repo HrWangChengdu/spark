@@ -60,11 +60,13 @@ private[spark] class LocalEndpoint(
   private val executor = new Executor(
     localExecutorId, localExecutorHostname, SparkEnv.get, userClassPath, isLocal = true)
 
+  private val printGeneral:Boolean = SparkEnv.get.conf.getBoolean("spark.selflog.General", false)
+
   /**
    * Print category
    */
   override def printCategory(): Boolean = {
-    true
+    printGeneral
   }
 
   override def receive(str: String="", logger: Logger=null): PartialFunction[Any, Unit] = {

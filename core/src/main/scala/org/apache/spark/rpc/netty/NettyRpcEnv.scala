@@ -59,6 +59,10 @@ private[netty] class NettyRpcEnv(
   private[netty] val launchTaskSign:Byte = 1
   private[netty] val nonLaunchTaskSign:Byte = 0
 
+  private val printGeneral:Boolean = conf.getBoolean("spark.selflog.General", false)
+  private val printTaskSentLimit:Boolean = conf.getBoolean("spark.TaskSentBreakDownLimited", false)
+  private val printTaskSent:Boolean = conf.getBoolean("spark.TaskSentBreakDown", false)
+
   private val dispatcher: Dispatcher = new Dispatcher(this)
 
   private val streamManager = new NettyStreamManager(this)
@@ -210,14 +214,16 @@ private[netty] class NettyRpcEnv(
         } else {
           bf = serialize(message)
         }
-        network_log.info("Task sent byte: " + bf.limit)
-        logTrace("Task sent byte: " + bf.limit)
 
-        if (conf.getBoolean("spark.TaskSentBreakDownLimited", false)) {
+        if (printGeneral) {
+          network_log.info("Task sent byte: " + bf.limit)
+        }
+
+        if (printTaskSentLimit) {
           network_log.info(s"TempLog: TaskSent messageSize ${bf.limit}")
         }
 
-        if (conf.getBoolean("spark.TaskSentBreakDown", false)) {
+        if (printTaskSent) {
           val recSize = serialize(message.receiver).limit
           val recNameSize = serialize(message.receiver.name).limit
           val addressSize = serialize(message.senderAddress).limit
@@ -234,7 +240,6 @@ private[netty] class NettyRpcEnv(
           bf.put(bf.limit - 1, nonLaunchTaskSign)
         }
       }
-      network_log.info(senderType + " sent breakdown size " + bf.limit)
       postToOutbox(message.receiver, OneWayOutboxMessage(bf))
       //postToOutbox(message.receiver, OneWayOutboxMessage(serialize(message)))
     }
@@ -284,11 +289,11 @@ private[netty] class NettyRpcEnv(
             bf = serialize(message)
           }
 
-          if (conf.getBoolean("spark.TaskSentBreakDownLimited", false)) {
+          if (printTaskSentLimit) {
             network_log.info(s"TempLog: TaskSent messageSize ${bf.limit}")
           }
 
-          if (conf.getBoolean("spark.TaskSentBreakDown", false)) {
+          if (printTaskSent) {
             val recSize = serialize(message.receiver).limit
             val recNameSize = serialize(message.receiver.name).limit
             val addressSize = serialize(message.senderAddress).limit
@@ -305,7 +310,9 @@ private[netty] class NettyRpcEnv(
             bf.put(bf.limit - 1, nonLaunchTaskSign)
           }
         }
-        network_log.info(senderType + " sent breakdown size "  + bf.limit)
+        if (printGeneral) {
+          network_log.info(senderType + " sent breakdown size "  + bf.limit)
+        }
         val rpcMessage = RpcOutboxMessage(bf,
         //val rpcMessage = RpcOutboxMessage(serialize(message),
           onFailure,

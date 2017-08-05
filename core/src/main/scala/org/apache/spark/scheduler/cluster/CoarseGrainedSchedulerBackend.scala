@@ -122,16 +122,22 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
       }, 0, reviveIntervalMs, TimeUnit.MILLISECONDS)
     }
 
+    private val printGeneral:Boolean = conf.getBoolean("spark.selflog.General", false)
+    private val printTaskSent:Boolean = conf.getBoolean("spark.TaskSentBreakDown", false)
+    private val printTaskSentLimit:Boolean = conf.getBoolean("spark.TaskSentBreakDownLimited", false)
+
     /**
      * Print category
      */
     override def printCategory(): Boolean = {
-      true
+      printGeneral
     }
 
     override def receive(str: String = "", network_log: Logger=null): PartialFunction[Any, Unit] = {
       case StatusUpdate(executorId, taskId, state, data) =>
-        network_log.info(str + " category:StatusUpdate")
+        if (printGeneral) {
+          network_log.info(str + " category:StatusUpdate")
+        }
         scheduler.statusUpdate(taskId, state, data.value)
         if (TaskState.isFinished(state)) {
           executorDataMap.get(executorId) match {
@@ -146,11 +152,15 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
         }
 
       case ReviveOffers =>
-        network_log.info(str + " category:ReviveOffers")
+        if (printGeneral) {
+          network_log.info(str + " category:ReviveOffers")
+        }
         makeOffers()
 
       case KillTask(taskId, executorId, interruptThread) =>
-        network_log.info(str + " category:KillTask")
+        if (printGeneral) {
+          network_log.info(str + " category:KillTask")
+        }
         executorDataMap.get(executorId) match {
           case Some(executorInfo) =>
             executorInfo.executorEndpoint.send(KillTask(taskId, executorId, interruptThread), this.getClass().getName() + " category:KillTask")
@@ -163,7 +173,9 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     override def receiveAndReply(context: RpcCallContext, str: String = "", network_log: Logger=null): PartialFunction[Any, Unit] = {
 
       case RegisterExecutor(executorId, executorRef, hostname, cores, logUrls) =>
-        network_log.info(str + " category:RegisterExecutor")
+        if (printGeneral) {
+          network_log.info(str + " category:RegisterExecutor")
+        }
         if (executorDataMap.contains(executorId)) {
           executorRef.send(RegisterExecutorFailed("Duplicate executor ID: " + executorId), this.getClass().getName() + " category:registerexecutor")
           context.reply(true)
@@ -202,12 +214,16 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
         }
 
       case StopDriver =>
-        network_log.info(str + " category:StopDriver")
+        if (printGeneral) {
+          network_log.info(str + " category:StopDriver")
+        }
         context.reply(true)
         stop()
 
       case StopExecutors =>
-        network_log.info(str + " category:StopExecutors")
+        if (printGeneral) {
+          network_log.info(str + " category:StopExecutors")
+        }
         logInfo("Asking each executor to shut down")
         for ((_, executorData) <- executorDataMap) {
           executorData.executorEndpoint.send(StopExecutor, this.getClass().getName() + " category:StopExecutor")
@@ -218,13 +234,17 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
         // We will remove the executor's state and cannot restore it. However, the connection
         // between the driver and the executor may be still alive so that the executor won't exit
         // automatically, so try to tell the executor to stop itself. See SPARK-13519.
-        network_log.info(str + " category:RemoveExecutor")
+        if (printGeneral) {
+          network_log.info(str + " category:RemoveExecutor")
+        }
         executorDataMap.get(executorId).foreach(_.executorEndpoint.send(StopExecutor, this.getClass().getName() + " category:RemoveExecutor"))
         removeExecutor(executorId, reason)
         context.reply(true)
 
       case RetrieveSparkAppConfig =>
-        network_log.info(str + " category:RetrieveSparkAppConfig")
+        if (printGeneral) {
+          network_log.info(str + " category:RetrieveSparkAppConfig")
+        }
         val reply = SparkAppConfig(sparkProperties,
           SparkEnv.get.securityManager.getIOEncryptionKey())
         context.reply(reply)
@@ -270,7 +290,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
       val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
       for (task <- tasks.flatten) {
 
-        if (conf.getBoolean("spark.TaskSentBreakDown", false)) {
+        if (printTaskSent) {
           val taskIDSize = taskSendSer.serialize(task.taskId).limit
           val attemptNumberSize = taskSendSer.serialize(task.attemptNumber).limit
           val executorSize = taskSendSer.serialize(task.executorId).limit
@@ -286,7 +306,7 @@ TempLog: TaskSent indexSize $indexSize""")
 
         val serializedTask = taskSendSer.serialize(task)
 
-        if (conf.getBoolean("spark.TaskSentBreakDown", false) || conf.getBoolean("spark.TaskSentBreakDownLimited", false)) {
+        if (printTaskSent || printTaskSentLimit) {
           network_log.info(s"TempLog: TaskSent taskDescSize ${serializedTask.limit}")
         }
         if (serializedTask.limit >= maxRpcMessageSize) {
@@ -311,7 +331,7 @@ TempLog: TaskSent indexSize $indexSize""")
 
           val lt = LaunchTask(new SerializableBuffer(serializedTask))
 
-          if (conf.getBoolean("spark.TaskSentBreakDown", false)) {
+          if (printTaskSent) {
             network_log.info(s"TempLog: TaskSent lt ${ser.serialize(lt).limit}")
           }
           executorData.executorEndpoint.send(lt, this.getClass().getName() + " category:LaunchTask")

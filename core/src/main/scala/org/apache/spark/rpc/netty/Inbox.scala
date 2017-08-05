@@ -112,7 +112,7 @@ private[netty] class Inbox(
                   throw new SparkException(s"Unsupported message $message from ${_sender}")
                 })
               } else {
-                network_log.info(endpoint.getName + " received breakdown size " + bufferSize)
+                //network_log.info(endpoint.getName + " received breakdown size " + bufferSize)
                 endpoint.receiveAndReply(context).applyOrElse[Any, Unit](content, { msg =>
                   throw new SparkException(s"Unsupported message $message from ${_sender}")
                 })
@@ -134,7 +134,7 @@ private[netty] class Inbox(
                 throw new SparkException(s"Unsupported message $message from ${_sender}")
               })
             } else {
-              network_log.info(endpoint.getName + " received breakdown size " + bufferSize)
+              //network_log.info(endpoint.getName + " received breakdown size " + bufferSize)
               endpoint.receive().applyOrElse[Any, Unit](content, { msg =>
                 throw new SparkException(s"Unsupported message $message from ${_sender}")
               })
