@@ -358,10 +358,7 @@ private[spark] class KryoSerializerInstance(ks: KryoSerializer, useUnsafe: Boole
     } finally {
       releaseKryo(kryo)
     }
-    val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
     val byteArray= output.toBytes
-    val byteSize = byteArray.length
-    network_log.info(s"TempLog: TaskSent Kryo-SerializerByteSize ${byteSize}")
     val bf = ByteBuffer.wrap(byteArray)
     if (t.isInstanceOf[RequestMessage]) {
       bf.limit(bf.limit - 1)
@@ -372,8 +369,6 @@ private[spark] class KryoSerializerInstance(ks: KryoSerializer, useUnsafe: Boole
   override def deserialize[T: ClassTag](bytes: ByteBuffer): T = {
     val kryo = borrowKryo()
     try {
-      val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-      network_log.info(s"TempLog: TaskSent Kryo-DeserializerByteSize")
       if (bytes.hasArray) {
         input.setBuffer(bytes.array(), bytes.arrayOffset() + bytes.position(), bytes.remaining())
       } else {
