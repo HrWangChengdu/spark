@@ -190,6 +190,7 @@ class DAGScheduler(
   private val disallowStageRetryForTest = sc.getConf.getBoolean("spark.test.noStageRetry", false)
 
   private val printPartition: Boolean = sc.getConf.getBoolean("spark.selflog.TaskSentBreakDownWholeGraphPartition", false)
+  private val printObjectToBroadcast: Boolean = sc.getConf.getBoolean("spark.selflog.BroadcastBreakdown", false)
   private val printBC: Boolean = sc.getConf.getBoolean("spark.selflog.BlockTransfer", false)
   private val genSubgraphOpt: Boolean = sc.getConf.getBoolean("spark.selfopt.GenSubgraph", false)
   private val printExistingParents: Boolean = sc.getConf.getBoolean("spark.selflog.PrintExistParentRDDs", false)
@@ -1109,6 +1110,20 @@ class DAGScheduler(
             closureSerializer.serialize((stage.rdd, stage.shuffleDep): AnyRef))
         case stage: ResultStage =>
           JavaUtils.bufferToArray(closureSerializer.serialize((stage.rdd, stage.func): AnyRef))
+      }
+      if (printObjectToBroadcast) {
+        stage match {
+          case stage: ShuffleMapStage =>
+            val rdd_object = closureSerializer.serialize(stage.rdd)
+            val dep_object = closureSerializer.serialize(stage.rdd.dependencies_)
+            val shuffle_dep_object = closureSerializer.serialize(stage.shuffleDep)
+            network_log.info(s"TempLog: broadcasting rdd len is ${rdd_object.limit}, dep len is ${dep_object.limit}, shuffle_dep len is ${shuffle_dep_object.limit}")
+          case stage: ResultStage =>
+            val rdd_object = closureSerializer.serialize(stage.rdd)
+            val dep_object = closureSerializer.serialize(stage.rdd.dependencies_)
+            val func_object = closureSerializer.serialize(stage.func)
+            network_log.info(s"TempLog: broadcasting rdd len is ${rdd_object.limit}, dep len is ${dep_object.limit}, func len is ${func_object.limit}")
+        }
       }
 
       logInfo("# Bytes of taskBinaryBytes: " + taskBinaryBytes.length)
