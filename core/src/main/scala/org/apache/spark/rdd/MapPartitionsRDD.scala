@@ -44,12 +44,17 @@ private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
 
   override def getPartitions: Array[Partition] = firstParent[T].partitions
 
+  override private[spark] def computeOrReadCheckpoint(split: Partition, context: TaskContext): Iterator[U] =
+  {
+    if (isCheckpointedAndMaterialized) {
+      firstParent[U].iterator(split, context)
+    } else {
+      // without the shallow checking
+      compute(split, context)
+    }
+  }
+
   override def compute(split: Partition, context: TaskContext): Iterator[U] = {
-    // Note: the shallow check is commented in purpose.
-    // Leave it to its parent's computation
-    // if (split.isShallow) {
-    //   throw new SubgraphPartitionException(id, name)
-    // }
     f(context, split.index, firstParent[T].iterator(split, context))
   }
 

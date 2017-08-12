@@ -220,11 +220,6 @@ class HadoopRDD[K, V](
   }
 
   override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[(K, V)] = {
-    // Partition in compute() should not be shallow
-    if (theSplit.isShallow) {
-      throw new SubgraphPartitionException(id, name)
-    }
-
     val iter = new NextIterator[(K, V)] {
 
       private val split = theSplit.asInstanceOf[HadoopPartition]

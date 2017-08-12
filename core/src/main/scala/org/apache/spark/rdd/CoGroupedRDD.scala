@@ -162,11 +162,6 @@ class CoGroupedRDD[K: ClassTag](
     val split = s.asInstanceOf[CoGroupPartition]
     val numRdds = dependencies.length
 
-    // Partition in compute() should not be shallow
-    if (s.isShallow) {
-      throw new SubgraphPartitionException(id, name)
-    }
-
     // A list of (rdd iterator, dependency number) pairs
     val rddIterators = new ArrayBuffer[(Iterator[Product2[K, Any]], Int)]
     for ((dep, depNum) <- dependencies.zipWithIndex) dep match {

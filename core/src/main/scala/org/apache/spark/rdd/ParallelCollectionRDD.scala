@@ -113,10 +113,6 @@ private[spark] class ParallelCollectionRDD[T: ClassTag](
   }
 
   override def compute(s: Partition, context: TaskContext): Iterator[T] = {
-    // Partition in compute() should not be shallow
-    if (s.isShallow) {
-      throw new SubgraphPartitionException(id, name)
-    }
     new InterruptibleIterator(context, s.asInstanceOf[ParallelCollectionPartition[T]].iterator)
   }
 

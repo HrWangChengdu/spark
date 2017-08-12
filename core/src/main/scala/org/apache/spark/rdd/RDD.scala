@@ -230,7 +230,8 @@ abstract class RDD[T: ClassTag](
 
   // Our dependencies and partitions will be gotten by calling subclass's methods below, and will
   // be overwritten when we're checkpointed
-  private var dependencies_ : Seq[Dependency[_]] = null
+  var dependencies_ : Seq[Dependency[_]] = null
+
   // @transient protected val tmp_ser: SerializerInstance = SparkEnv.get.taskSentSerializer.newInstance()
   @transient private var partitions_ : Array[Partition] = null
   @transient private var shawllowPartitions_ : Array[Partition] = null
@@ -239,6 +240,7 @@ abstract class RDD[T: ClassTag](
 
   /** An Option holding our checkpoint RDD, if we are checkpointed */
   private def checkpointRDD: Option[CheckpointRDD[T]] = checkpointData.flatMap(_.checkpointRDD)
+
 
   /**
    * Get the list of dependencies of this RDD, taking into account whether the
@@ -371,6 +373,9 @@ abstract class RDD[T: ClassTag](
     if (isCheckpointedAndMaterialized) {
       firstParent[T].iterator(split, context)
     } else {
+      if (split.isShallow) {
+        throw new SubgraphPartitionException(id, name)
+      }
       compute(split, context)
     }
   }
