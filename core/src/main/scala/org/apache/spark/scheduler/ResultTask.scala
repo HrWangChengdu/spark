@@ -54,7 +54,8 @@ import org.apache.log4j.{Level, LogManager, PropertyConfigurator}
 private[spark] class ResultTask[T, U](
     stageId: Int,
     stageAttemptId: Int,
-    val taskBinary: Broadcast[Array[Byte]],
+    var taskBinary: Broadcast[Array[Byte]],
+    @transient var taskBinary_subgraph: Broadcast[Array[Byte]],
     var partition: Partition,
     val locs: Seq[TaskLocation],
     val outputId: Int,
@@ -81,6 +82,12 @@ private[spark] class ResultTask[T, U](
     assert(fullPartition != null)
     partition = fullPartition
     fullPartition = null
+  }
+
+  override def switchSubTaskBinary() {
+    val buffer = taskBinary
+    taskBinary = taskBinary_subgraph
+    taskBinary_subgraph = buffer
   }
 
   override def runTask(context: TaskContext): U = {

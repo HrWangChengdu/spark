@@ -194,6 +194,8 @@ class DAGScheduler(
   private val printBC: Boolean = sc.getConf.getBoolean("spark.selflog.BlockTransfer", false)
   private val genSubgraphOpt: Boolean = sc.getConf.getBoolean("spark.selfopt.GenSubgraph", false)
   private val printExistingParents: Boolean = sc.getConf.getBoolean("spark.selflog.PrintExistParentRDDs", false)
+  // TODO: combine this with gensubgraph opt
+  private val genSubgraphDependencies: Boolean = sc.getConf.getBoolean("spark.selfopt.SubgraphDependencies", false)
 
   private val messageScheduler =
     ThreadUtils.newDaemonSingleThreadScheduledExecutor("dag-scheduler-message")
@@ -1101,6 +1103,7 @@ class DAGScheduler(
     // might modify state of objects referenced in their closures. This is necessary in Hadoop
     // where the JobConf/Configuration object is not thread-safe.
     var taskBinary: Broadcast[Array[Byte]] = null
+    var taskBinary_subgraph: Broadcast[Array[Byte]] = null
     try {
       // For ShuffleMapTask, serialize and broadcast (rdd, shuffleDep).
       // For ResultTask, serialize and broadcast (rdd, func).
@@ -1127,8 +1130,41 @@ class DAGScheduler(
       }
 
       logInfo("# Bytes of taskBinaryBytes: " + taskBinaryBytes.length)
-
       taskBinary = sc.broadcast(taskBinaryBytes)
+
+      if (genSubgraphDependencies) {
+        for (rdd <- existingRDDs) {
+          rdd.not_send_full_dependencies
+        }
+        val taskBinaryBytes_subgraph: Array[Byte] = stage match {
+          case stage: ShuffleMapStage =>
+            JavaUtils.bufferToArray(
+              closureSerializer.serialize((stage.rdd, stage.shuffleDep): AnyRef))
+          case stage: ResultStage =>
+            JavaUtils.bufferToArray(closureSerializer.serialize((stage.rdd, stage.func): AnyRef))
+        }
+        if (printObjectToBroadcast) {
+          stage match {
+            case stage: ShuffleMapStage =>
+              val rdd_object = closureSerializer.serialize(stage.rdd)
+              val dep_object = closureSerializer.serialize(stage.rdd.dependencies_)
+              val shuffle_dep_object = closureSerializer.serialize(stage.shuffleDep)
+              network_log.info(s"TempLog: sub broadcasting rdd len is ${rdd_object.limit}, dep len is ${dep_object.limit}, shuffle_dep len is ${shuffle_dep_object.limit}")
+            case stage: ResultStage =>
+              val rdd_object = closureSerializer.serialize(stage.rdd)
+              val dep_object = closureSerializer.serialize(stage.rdd.dependencies_)
+              val func_object = closureSerializer.serialize(stage.func)
+              network_log.info(s"TempLog: sub broadcasting rdd len is ${rdd_object.limit}, dep len is ${dep_object.limit}, func len is ${func_object.limit}")
+          }
+        }
+
+        logInfo("# Bytes of taskBinaryBytes: " + taskBinaryBytes_subgraph.length)
+        taskBinary_subgraph = sc.broadcast(taskBinaryBytes_subgraph)
+
+        for (rdd <- existingRDDs) {
+          rdd.restore_dependencies
+        }
+      }
     } catch {
       // In the case of a failure during serialization, abort the stage.
       case e: NotSerializableException =>
@@ -1164,7 +1200,7 @@ class DAGScheduler(
             val locs = taskIdToLocations(id)
             val part = stage.rdd.partitions(id)
             new ShuffleMapTask(stage.id, stage.latestInfo.attemptId,
-              taskBinary, part, locs, stage.latestInfo.taskMetrics, properties, Option(jobId),
+              taskBinary, taskBinary_subgraph, part, locs, stage.latestInfo.taskMetrics, properties, Option(jobId),
               Option(sc.applicationId), sc.applicationAttemptId)
           }
 
@@ -1174,7 +1210,7 @@ class DAGScheduler(
             val part = stage.rdd.partitions(p)
             val locs = taskIdToLocations(id)
             new ResultTask(stage.id, stage.latestInfo.attemptId,
-              taskBinary, part, locs, id, properties, stage.latestInfo.taskMetrics,
+              taskBinary, taskBinary_subgraph, part, locs, id, properties, stage.latestInfo.taskMetrics,
               Option(jobId), Option(sc.applicationId), sc.applicationAttemptId)
           }
       }

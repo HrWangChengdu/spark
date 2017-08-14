@@ -61,6 +61,7 @@ private[spark] class TaskSetManager(
   val SPECULATION_MULTIPLIER = conf.getDouble("spark.speculation.multiplier", 1.5)
   val genSubgraphOpt: Boolean = conf.getBoolean("spark.selfopt.GenSubgraph", false)
   val useSubgraphOpt: Boolean = conf.getBoolean("spark.selfopt.UseSubgraph", false)
+  val genSubgraphDependencies: Boolean = conf.getBoolean("spark.selfopt.SubgraphDependencies", false)
 
   // Limit of bytes for total size of results (default is 1GB)
   val maxResultSize = Utils.getMaxResultSize(conf)
@@ -438,12 +439,19 @@ private[spark] class TaskSetManager(
         val task = tasks(index)
 
         logInfo(s"SubGraph Info genSubgraphOpt: $genSubgraphOpt useSubgraphOpt $useSubgraphOpt")
+        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
         if (genSubgraphOpt && useSubgraphOpt) {
           if (numFailures(index) == 0) {
             task.useSubgraphPartition(taskSet.subgraphPartitions(index))
+            if (genSubgraphDependencies) {
+              network_log.info("Use sub graph Dependency")
+              task.switchSubTaskBinary
+            }
           } else if (numFailures(index) == 1) {
             // TODO: seperate subgraph failures from others
             task.restoreToFullPartition()
+            if (genSubgraphDependencies)
+              task.switchSubTaskBinary
           }
         }
         val taskId = sched.newTaskId()
@@ -460,7 +468,6 @@ private[spark] class TaskSetManager(
           currentLocalityIndex = getLocalityIndex(taskLocality)
           lastLaunchTime = curTime
         }
-        val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
         task match {
           case rt: ResultTask[_, _] =>
             if (env.conf.getBoolean("spark.TaskSentBreakDown", false) || conf.getBoolean("spark.TaskSentBreakDownLimited", false)) {

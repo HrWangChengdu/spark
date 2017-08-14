@@ -73,6 +73,9 @@ private[spark] abstract class Task[T](
   def restoreToFullPartition() {
   }
 
+  def switchSubTaskBinary() {
+  }
+
   /**
    * Called by [[org.apache.spark.executor.Executor]] to run this task.
    *
