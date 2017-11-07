@@ -197,6 +197,8 @@ class DAGScheduler(
   // TODO: combine this with gensubgraph opt
   private val genSubgraphDependencies: Boolean = sc.getConf.getBoolean("spark.selfopt.SubgraphDependencies", false)
 
+  private val cacheMetaData: Boolean = sc.getConf.getBoolean("spark.selfopt.CacheMetaData", false)
+
   private val messageScheduler =
     ThreadUtils.newDaemonSingleThreadScheduledExecutor("dag-scheduler-message")
 
@@ -463,11 +465,10 @@ class DAGScheduler(
                 waitingForVisit.push(narrowDep.rdd)
             }
           }
-        } else {
-          logInfo("Rdd has cached partitions: " + stage.rdd)
         }
       }
     }
+
     waitingForVisit.push(stage.rdd)
     while (waitingForVisit.nonEmpty) {
       visit(waitingForVisit.pop())
@@ -587,8 +588,11 @@ class DAGScheduler(
                   logDebug("Removing running stage %d".format(stageId))
                   runningStages -= stage
                 }
-                for ((k, v) <- shuffleIdToMapStage.find(_._2 == stage)) {
-                  shuffleIdToMapStage.remove(k)
+                if (!cacheMetaData) {
+                  for ((k, v) <- shuffleIdToMapStage.find(_._2 == stage)) {
+                    logInfo("Remove shuffleid %d from shuffleIdToMapStage".format(k))
+                    shuffleIdToMapStage.remove(k)
+                  }
                 }
                 if (waitingStages.contains(stage)) {
                   logDebug("Removing stage %d from waiting set.".format(stageId))
