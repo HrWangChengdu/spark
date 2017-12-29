@@ -18,6 +18,7 @@
 package org.apache.spark.sql.execution.streaming.state
 
 import scala.collection.mutable
+import org.apache.log4j.Logger
 
 import org.apache.spark.SparkEnv
 import org.apache.spark.internal.Logging
@@ -115,13 +116,13 @@ private class StateStoreCoordinator(override val rpcEnv: RpcEnv)
     extends ThreadSafeRpcEndpoint with Logging {
   private val instances = new mutable.HashMap[StateStoreId, ExecutorCacheTaskLocation]
 
-  override def receive: PartialFunction[Any, Unit] = {
+  override def receive(str: String="", network_log: Logger=null): PartialFunction[Any, Unit] = {
     case ReportActiveInstance(id, host, executorId) =>
       logDebug(s"Reported state store $id is active at $executorId")
       instances.put(id, ExecutorCacheTaskLocation(host, executorId))
   }
 
-  override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+  override def receiveAndReply(context: RpcCallContext, str: String="", network_log: Logger=null): PartialFunction[Any, Unit] = {
     case VerifyIfInstanceActive(id, execId) =>
       val response = instances.get(id) match {
         case Some(location) => location.executorId == execId

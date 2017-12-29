@@ -24,6 +24,8 @@ import scala.concurrent.ExecutionContext
 import scala.language.existentials
 import scala.util.{Failure, Success}
 
+import org.apache.log4j.Logger
+
 import org.apache.spark._
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
@@ -170,7 +172,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
       trackerState = Stopping
       if (!skipReceiverLaunch) {
         // Send the stop signal to all the receivers
-        endpoint.askWithRetry[Boolean](StopAllReceivers)
+        endpoint.askWithRetry[Boolean](StopAllReceivers, "")
 
         // Wait for the Spark job that runs the receivers to be over
         // That is, for the receivers to quit gracefully.
@@ -183,7 +185,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
         }
 
         // Check if all the receivers have been deregistered or not
-        val receivers = endpoint.askWithRetry[Seq[Int]](AllReceiverIds)
+        val receivers = endpoint.askWithRetry[Seq[Int]](AllReceiverIds, "")
         if (receivers.nonEmpty) {
           logWarning("Not all of the receivers have deregistered, " + receivers)
         } else {
@@ -237,7 +239,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
       logInfo(s"Cleanup old received batch data: $cleanupThreshTime")
       synchronized {
         if (isTrackerStarted) {
-          endpoint.send(CleanupOldBlocks(cleanupThreshTime))
+          endpoint.send(CleanupOldBlocks(cleanupThreshTime), "")
         }
       }
     }
@@ -249,7 +251,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
    */
   def allocatedExecutors(): Map[Int, Option[String]] = synchronized {
     if (isTrackerStarted) {
-      endpoint.askWithRetry[Map[Int, ReceiverTrackingInfo]](GetAllReceiverInfo).mapValues {
+      endpoint.askWithRetry[Map[Int, ReceiverTrackingInfo]](GetAllReceiverInfo, "").mapValues {
         _.runningExecutor.map {
           _.executorId
         }
@@ -342,7 +344,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
   /** Update a receiver's maximum ingestion rate */
   def sendRateUpdate(streamUID: Int, newRate: Long): Unit = synchronized {
     if (isTrackerStarted) {
-      endpoint.send(UpdateReceiverRateLimit(streamUID, newRate))
+      endpoint.send(UpdateReceiverRateLimit(streamUID, newRate), "")
     }
   }
 
@@ -450,7 +452,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
     runDummySparkJob()
 
     logInfo("Starting " + receivers.length + " receivers")
-    endpoint.send(StartAllReceivers(receivers))
+    endpoint.send(StartAllReceivers(receivers), "")
   }
 
   /** Check if tracker has been marked for initiated */
@@ -473,7 +475,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
 
     @volatile private var active: Boolean = true
 
-    override def receive: PartialFunction[Any, Unit] = {
+    override def receive(str: String="", network_log: Logger=null): PartialFunction[Any, Unit] = {
       // Local messages
       case StartAllReceivers(receivers) =>
         val scheduledLocations = schedulingPolicy.scheduleReceivers(receivers, getExecutors)
@@ -505,17 +507,17 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
         // receiverTrackingInfos
         startReceiver(receiver, scheduledLocations)
       case c: CleanupOldBlocks =>
-        receiverTrackingInfos.values.flatMap(_.endpoint).foreach(_.send(c))
+        receiverTrackingInfos.values.flatMap(_.endpoint).foreach(_.send(c, ""))
       case UpdateReceiverRateLimit(streamUID, newRate) =>
         for (info <- receiverTrackingInfos.get(streamUID); eP <- info.endpoint) {
-          eP.send(UpdateRateLimit(newRate))
+          eP.send(UpdateRateLimit(newRate), "")
         }
       // Remote messages
       case ReportError(streamId, message, error) =>
         reportError(streamId, message, error)
     }
 
-    override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+    override def receiveAndReply(context: RpcCallContext, str: String="", network_log: Logger=null): PartialFunction[Any, Unit] = {
       // Remote messages
       case RegisterReceiver(streamId, typ, host, executorId, receiverEndpoint) =>
         val successful =
@@ -632,7 +634,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
             onReceiverJobFinish(receiverId)
           } else {
             logInfo(s"Restarting Receiver $receiverId")
-            self.send(RestartReceiver(receiver))
+            self.send(RestartReceiver(receiver), "")
           }
         case Failure(e) =>
           if (!shouldStartReceiver) {
@@ -640,7 +642,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
           } else {
             logError("Receiver has been stopped. Try to restart it.", e)
             logInfo(s"Restarting Receiver $receiverId")
-            self.send(RestartReceiver(receiver))
+            self.send(RestartReceiver(receiver), "")
           }
       }(ThreadUtils.sameThread)
       logInfo(s"Receiver ${receiver.streamId} started")
@@ -665,7 +667,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
 
     /** Send stop signal to the receivers. */
     private def stopReceivers() {
-      receiverTrackingInfos.values.flatMap(_.endpoint).foreach { _.send(StopReceiver) }
+      receiverTrackingInfos.values.flatMap(_.endpoint).foreach { _.send(StopReceiver, "") }
       logInfo("Sent stop signal to all " + receiverTrackingInfos.size + " receivers")
     }
   }

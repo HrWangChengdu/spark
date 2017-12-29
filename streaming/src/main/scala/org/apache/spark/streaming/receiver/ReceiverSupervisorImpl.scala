@@ -26,6 +26,7 @@ import scala.collection.mutable.ArrayBuffer
 
 import com.google.common.base.Throwables
 import org.apache.hadoop.conf.Configuration
+import org.apache.log4j.Logger
 
 import org.apache.spark.{SparkEnv, SparkException}
 import org.apache.spark.internal.Logging
@@ -76,7 +77,7 @@ private[streaming] class ReceiverSupervisorImpl(
     "Receiver-" + streamId + "-" + System.currentTimeMillis(), new ThreadSafeRpcEndpoint {
       override val rpcEnv: RpcEnv = env.rpcEnv
 
-      override def receive: PartialFunction[Any, Unit] = {
+      override def receive(str: String="", network_log: Logger=null): PartialFunction[Any, Unit] = {
         case StopReceiver =>
           logInfo("Received stop signal")
           ReceiverSupervisorImpl.this.stop("Stopped by driver", None)
@@ -159,14 +160,14 @@ private[streaming] class ReceiverSupervisorImpl(
     logDebug(s"Pushed block $blockId in ${(System.currentTimeMillis - time)} ms")
     val numRecords = blockStoreResult.numRecords
     val blockInfo = ReceivedBlockInfo(streamId, numRecords, metadataOption, blockStoreResult)
-    trackerEndpoint.askWithRetry[Boolean](AddBlock(blockInfo))
+    trackerEndpoint.askWithRetry[Boolean](AddBlock(blockInfo), "")
     logDebug(s"Reported block $blockId")
   }
 
   /** Report error to the receiver tracker */
   def reportError(message: String, error: Throwable) {
     val errorString = Option(error).map(Throwables.getStackTraceAsString).getOrElse("")
-    trackerEndpoint.send(ReportError(streamId, message, errorString))
+    trackerEndpoint.send(ReportError(streamId, message, errorString), "")
     logWarning("Reported error " + message + " - " + error)
   }
 
@@ -182,13 +183,13 @@ private[streaming] class ReceiverSupervisorImpl(
   override protected def onReceiverStart(): Boolean = {
     val msg = RegisterReceiver(
       streamId, receiver.getClass.getSimpleName, host, executorId, endpoint)
-    trackerEndpoint.askWithRetry[Boolean](msg)
+    trackerEndpoint.askWithRetry[Boolean](msg, "")
   }
 
   override protected def onReceiverStop(message: String, error: Option[Throwable]) {
     logInfo("Deregistering receiver " + streamId)
     val errorString = error.map(Throwables.getStackTraceAsString).getOrElse("")
-    trackerEndpoint.askWithRetry[Boolean](DeregisterReceiver(streamId, message, errorString))
+    trackerEndpoint.askWithRetry[Boolean](DeregisterReceiver(streamId, message, errorString), "")
     logInfo("Stopped receiver " + streamId)
   }
 

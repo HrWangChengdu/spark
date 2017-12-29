@@ -44,7 +44,7 @@ private[spark] abstract class RpcEndpointRef(conf: SparkConf)
   /**
    * Sends a one-way asynchronous message. Fire-and-forget semantics.
    */
-  def send(message: Any, senderType: String): Unit
+  def send(message: Any, senderType: String=""): Unit
 
   /**
    * Send a message to the corresponding [[RpcEndpoint.receiveAndReply)]] and return a [[Future]] to
@@ -75,7 +75,7 @@ private[spark] abstract class RpcEndpointRef(conf: SparkConf)
    * @tparam T type of the reply message
    * @return the reply message from the corresponding [[RpcEndpoint]]
    */
-  def askWithRetry[T: ClassTag](message: Any, senderType: String): T = askWithRetry(message, defaultAskTimeout, senderType)
+  def askWithRetry[T: ClassTag](message: Any, senderType: String=""): T = askWithRetry(message, defaultAskTimeout, senderType)
 
   /**
    * Send a message to the corresponding [[RpcEndpoint.receive]] and get its result within a
