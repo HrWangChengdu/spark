@@ -20,6 +20,7 @@ package org.apache.spark.streaming.dstream
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
+import org.apache.spark.SparkEnv
 import org.apache.spark.Partitioner
 import org.apache.spark.rdd.{CoGroupedRDD, RDD}
 import org.apache.spark.storage.StorageLevel
@@ -60,7 +61,7 @@ class ReducedWindowedDStream[K: ClassTag, V: ClassTag](
 
   override def slideDuration: Duration = _slideDuration
 
-  override val mustCheckpoint = true
+  override val mustCheckpoint = !SparkEnv.get.conf.getBoolean("spark.selfopt.StreamNoCheckpoint", false)
 
   override def parentRememberDuration: Duration = rememberDuration + windowDuration
 

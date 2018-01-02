@@ -19,6 +19,7 @@ package org.apache.spark.streaming.dstream
 
 import scala.reflect.ClassTag
 
+import org.apache.spark.SparkEnv
 import org.apache.spark.Partitioner
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
@@ -39,7 +40,7 @@ class StateDStream[K: ClassTag, V: ClassTag, S: ClassTag](
 
   override def slideDuration: Duration = parent.slideDuration
 
-  override val mustCheckpoint = true
+  override val mustCheckpoint = !SparkEnv.get.conf.getBoolean("spark.selfopt.StreamNoCheckpoint", false)
 
   private [this] def computeUsingPreviousRDD(
       batchTime: Time,
