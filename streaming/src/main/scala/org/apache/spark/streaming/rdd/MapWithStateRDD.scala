@@ -86,7 +86,8 @@ private[streaming] object MapWithStateRDDRecord {
 private[streaming] class MapWithStateRDDPartition(
     override val index: Int,
     @transient private var prevStateRDD: RDD[_],
-    @transient private var partitionedDataRDD: RDD[_]) extends Partition {
+    @transient private var partitionedDataRDD: RDD[_],
+    @transient val childShallow: Boolean = false) extends Partition {
 
   private[rdd] var previousSessionRDDPartition: Partition = null
   private[rdd] var partitionedDataRDDPartition: Partition = null
@@ -98,11 +99,27 @@ private[streaming] class MapWithStateRDDPartition(
     case _ => false
   }
 
+  override def shallowCopy(): Partition = {
+    val part =  new MapWithStateRDDPartition(index, null, null)
+    part.isShallow = true
+    part
+  }
+
   @throws(classOf[IOException])
   private def writeObject(oos: ObjectOutputStream): Unit = Utils.tryOrIOException {
     // Update the reference to parent split at the time of task serialization
-    previousSessionRDDPartition = prevStateRDD.partitions(index)
-    partitionedDataRDDPartition = partitionedDataRDD.partitions(index)
+    if (prevStateRDD != null) {
+      if (childShallow)
+        previousSessionRDDPartition = prevStateRDD.subgraphPartitions()(index)
+      else
+        previousSessionRDDPartition = prevStateRDD.partitions(index)
+    }
+    if (partitionedDataRDD != null) {
+      if (childShallow)
+        partitionedDataRDDPartition = partitionedDataRDD.subgraphPartitions()(index)
+      else
+        partitionedDataRDDPartition = partitionedDataRDD.partitions(index)
+    }
     oos.defaultWriteObject()
   }
 }
@@ -135,11 +152,38 @@ private[streaming] class MapWithStateRDD[K: ClassTag, V: ClassTag, S: ClassTag, 
   ) {
 
   @volatile private var doFullScan = false
+  @transient var org_prevStateRDD :RDD[MapWithStateRDDRecord[K, S, E]] = null
+  @transient var org_partitionedDataRDD : RDD[(K, V)] = null
 
   require(prevStateRDD.partitioner.nonEmpty)
   require(partitionedDataRDD.partitioner == prevStateRDD.partitioner)
 
   override val partitioner = prevStateRDD.partitioner
+  /**
+   * Do not send real dependencies to save network traffic
+   */
+  override def not_send_full_dependencies {
+    assert((org_dependencies_ == null) && (dependencies_ != null))
+    org_dependencies_ = dependencies_
+    dependencies_ = null
+    org_partitionedDataRDD = partitionedDataRDD
+    org_prevStateRDD = prevStateRDD
+    partitionedDataRDD = null
+    prevStateRDD = null
+  }
+
+  /**
+   * Restore prev dependencies
+   */
+  override def restore_dependencies {
+    assert((org_dependencies_ != null) && (dependencies_ == null))
+    dependencies_ = org_dependencies_
+    org_dependencies_ = null
+    partitionedDataRDD = org_partitionedDataRDD
+    prevStateRDD = org_prevStateRDD
+    org_partitionedDataRDD = null
+    org_prevStateRDD = null
+  }
 
   override def checkpoint(): Unit = {
     super.checkpoint()
@@ -149,7 +193,12 @@ private[streaming] class MapWithStateRDD[K: ClassTag, V: ClassTag, S: ClassTag, 
   override def compute(
       partition: Partition, context: TaskContext): Iterator[MapWithStateRDDRecord[K, S, E]] = {
 
+    logInfo("compute mapwithstate rdd " + id)
+
     val stateRDDPartition = partition.asInstanceOf[MapWithStateRDDPartition]
+    assert(!stateRDDPartition.isShallow);
+    assert(stateRDDPartition.previousSessionRDDPartition != null);
+    assert(stateRDDPartition.partitionedDataRDDPartition != null);
     val prevStateRDDIterator = prevStateRDD.iterator(
       stateRDDPartition.previousSessionRDDPartition, context)
     val dataIterator = partitionedDataRDD.iterator(
@@ -170,6 +219,17 @@ private[streaming] class MapWithStateRDD[K: ClassTag, V: ClassTag, S: ClassTag, 
   override protected def getPartitions: Array[Partition] = {
     Array.tabulate(prevStateRDD.partitions.length) { i =>
       new MapWithStateRDDPartition(i, prevStateRDD, partitionedDataRDD)}
+  }
+
+  override def getSubgraphPartitions(existingRdds: List[RDD[_]]): Array[Partition] = {
+    if (existingRdds.contains(this)) {
+      shallowCopyPartitions
+    } else {
+      prevStateRDD.subgraphPartitions(existingRdds)
+      partitionedDataRDD.subgraphPartitions(existingRdds)
+      Array.tabulate(prevStateRDD.partitions.length) { i =>
+        new MapWithStateRDDPartition(i, prevStateRDD, partitionedDataRDD, true)}
+    }
   }
 
   override def clearDependencies(): Unit = {
