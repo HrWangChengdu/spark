@@ -245,7 +245,7 @@ abstract class RDD[T: ClassTag](
   /**
    * Do not send real dependencies to save network traffic
    */
-  final def not_send_full_dependencies {
+  def not_send_full_dependencies {
     assert((org_dependencies_ == null) && (dependencies_ != null))
     org_dependencies_ = dependencies_
     dependencies_ = null
@@ -254,7 +254,7 @@ abstract class RDD[T: ClassTag](
   /**
    * Restore prev dependencies
    */
-  final def restore_dependencies {
+  def restore_dependencies {
     assert((org_dependencies_ != null) && (dependencies_ == null))
     dependencies_ = org_dependencies_
     org_dependencies_ = null
@@ -304,8 +304,10 @@ abstract class RDD[T: ClassTag](
    * Get the array of subgraph partitions of this RDD
    * TODO: Not taking into account whether the RDD is checkpointed or not.
    */
-  final def subgraphPartitions(existingRDDs: List[RDD[_]]): Array[Partition] = {
-    if (subgraphPartitions_ == null || cachedRddList_ != existingRDDs) {
+  final def subgraphPartitions(existingRDDs: List[RDD[_]] = null): Array[Partition] = {
+    // When existingRDDs is null, it means return current subgraphPartition
+    if (subgraphPartitions_ == null || (cachedRddList_ != existingRDDs && (existingRDDs!=null))) {
+      assert(existingRDDs!=null)
       cachedRddList_ = existingRDDs
       subgraphPartitions_ = getSubgraphPartitions(existingRDDs)
       subgraphPartitions_.zipWithIndex.foreach { case (partition, index) =>
