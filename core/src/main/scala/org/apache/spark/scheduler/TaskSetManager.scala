@@ -437,12 +437,13 @@ private[spark] class TaskSetManager(
       dequeueTask(execId, host, allowedLocality).map { case ((index, taskLocality, speculative)) =>
         // Found a task; do some bookkeeping and return a task description
         val task = tasks(index)
+        val taskIndex = task.partitionId
 
         logInfo(s"SubGraph Info genSubgraphOpt: $genSubgraphOpt useSubgraphOpt $useSubgraphOpt")
         val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
         if (genSubgraphOpt && useSubgraphOpt) {
           if (numFailures(index) == 0) {
-            task.useSubgraphPartition(taskSet.subgraphPartitions(index))
+            task.useSubgraphPartition(taskSet.subgraphPartitions(taskIndex))
             if (genSubgraphDependencies) {
               network_log.info("Use sub graph Dependency")
               task.switchSubTaskBinary

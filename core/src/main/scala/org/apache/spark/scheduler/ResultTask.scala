@@ -74,6 +74,7 @@ private[spark] class ResultTask[T, U](
 
   override def useSubgraphPartition(subgraphPartition: Partition) {
     assert(fullPartition == null)
+    assert(subgraphPartition.index == partition.index)
     fullPartition = partition 
     partition = subgraphPartition
   }

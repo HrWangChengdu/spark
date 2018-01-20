@@ -70,6 +70,7 @@ private[spark] class ShuffleMapTask(
 
   override def useSubgraphPartition(subgraphPartition: Partition) {
     assert(fullPartition == null)
+    assert(subgraphPartition.index == partition.index)
     fullPartition = partition
     partition = subgraphPartition
   }
