@@ -44,7 +44,8 @@ private[spark] case class NarrowCoGroupSplitDep(
   @throws(classOf[IOException])
   private def writeObject(oos: ObjectOutputStream): Unit = Utils.tryOrIOException {
     // Update the reference to parent split at the time of task serialization
-    split = rdd.partitions(splitIndex)
+    if (split == null)
+      split = rdd.partitions(splitIndex)
     oos.defaultWriteObject()
   }
 }
