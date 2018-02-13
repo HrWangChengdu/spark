@@ -1910,10 +1910,16 @@ class SparkContext(config: SparkConf) extends Logging {
       throw new IllegalStateException("SparkContext has been shutdown")
     }
     val callSite = getCallSite
+    if (conf.getBoolean("spark.selfopt.SubgraphDependencies", false)) {
+      rdd.not_send_full_dependencies
+    }
     val cleanedFunc = clean(func)
     logInfo("Starting job: " + callSite.shortForm)
     if (conf.getBoolean("spark.logLineage", false)) {
       logInfo("RDD's recursive dependencies:\n" + rdd.toDebugString)
+    }
+    if (conf.getBoolean("spark.selfopt.SubgraphDependencies", false)) {
+      rdd.restore_dependencies
     }
     dagScheduler.runJob(rdd, cleanedFunc, partitions, callSite, resultHandler, localProperties.get)
     progressBar.foreach(_.finishAll())
@@ -1940,6 +1946,10 @@ class SparkContext(config: SparkConf) extends Logging {
       rdd: RDD[T],
       func: Iterator[T] => U,
       partitions: Seq[Int]): Array[U] = {
+
+    if (conf.getBoolean("spark.selfopt.SubgraphDependencies", false)) {
+      rdd.not_send_full_dependencies
+    }
     val cleanedFunc = clean(func)
     runJob(rdd, (ctx: TaskContext, it: Iterator[T]) => cleanedFunc(it), partitions)
   }

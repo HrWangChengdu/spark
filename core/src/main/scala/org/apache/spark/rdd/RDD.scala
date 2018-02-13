@@ -246,18 +246,20 @@ abstract class RDD[T: ClassTag](
    * Do not send real dependencies to save network traffic
    */
   def not_send_full_dependencies {
-    assert((org_dependencies_ == null) && (dependencies_ != null))
-    org_dependencies_ = dependencies_
-    dependencies_ = null
+    if ((org_dependencies_ == null) && (dependencies_ != null)) {
+      org_dependencies_ = dependencies_
+      dependencies_ = null
+    }
   }
 
   /**
    * Restore prev dependencies
    */
   def restore_dependencies {
-    assert((org_dependencies_ != null) && (dependencies_ == null))
-    dependencies_ = org_dependencies_
-    org_dependencies_ = null
+    if (org_dependencies_ != null && (dependencies_ == null)) {
+      dependencies_ = org_dependencies_
+      org_dependencies_ = null
+    }
   }
 
   /**

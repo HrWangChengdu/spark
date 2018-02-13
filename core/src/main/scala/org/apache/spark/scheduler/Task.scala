@@ -68,12 +68,15 @@ private[spark] abstract class Task[T](
   @transient var fullPartition: Partition = null
 
   def useSubgraphPartition(subgraphPartition: Partition) {
+    throw new SparkException("useSubgraphPartition not implemented")
   }
 
   def restoreToFullPartition() {
+    throw new SparkException("restoreToFullPartition not implemented")
   }
 
   def switchSubTaskBinary() {
+    throw new SparkException("switchSubTaskBinary not implemented")
   }
 
   /**
