@@ -46,6 +46,17 @@ private[spark] trait KnownSizeEstimation {
 }
 
 /**
+ * A trait that allows a class to give [[SizeEstimator]] a cached size estimation
+ * When a class extends it, [[SizeEstimator]] will query the `cachedSize` first.
+ * If `cachedSize` is not -1, [[SizeEstimator]] will use the returned size
+ * as the size of the object. Otherwise, [[SizeEstimator]] will do the estimation work
+ * and assigns the size to `cachedSize` which could be used by later estimation.
+ */
+private[spark] trait CachedSizeEstimation {
+  var cachedSize: Long = -1
+}
+
+/**
  * :: DeveloperApi ::
  * Estimates the sizes of Java objects (number of bytes of memory they occupy), for use in
  * memory-aware caches.
@@ -216,8 +227,17 @@ object SizeEstimator extends Logging {
       // general all ClassLoaders and Classes will be shared between objects anyway.
     } else {
       obj match {
-        case s: KnownSizeEstimation =>
-          state.size += s.estimatedSize
+        case ks: KnownSizeEstimation =>
+          state.size += ks.estimatedSize
+        case cs: CachedSizeEstimation =>
+          val classInfo = getClassInfo(cls)
+          if (cs.cachedSize == -1) {
+            cs.cachedSize = alignSize(classInfo.shellSize)
+            for (field <- classInfo.pointerFields) {
+              cs.cachedSize += estimate(field.get(obj))
+            }
+          }
+          state.size += cs.cachedSize
         case _ =>
           val classInfo = getClassInfo(cls)
           state.size += alignSize(classInfo.shellSize)
