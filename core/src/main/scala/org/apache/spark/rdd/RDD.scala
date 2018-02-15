@@ -363,6 +363,13 @@ abstract class RDD[T: ClassTag](
     }
   }
 
+  /*
+   * As the list of ancestor rdds might grow very long, only
+   * fetches the limited number in case it uses too long time
+   */
+  val genSubgraphOpt: Boolean = sc.getConf.getBoolean("spark.selfopt.GenSubgraph", false)
+  val ancestorNum: Int = sc.getConf.getInt("spark.selfopt.ancestorNum", 10)
+
   /**
    * Return the ancestors of the given RDD that are related to it only through a sequence of
    * narrow dependencies. This traverses the given RDD's dependency tree using DFS, but maintains
@@ -376,8 +383,10 @@ abstract class RDD[T: ClassTag](
       val narrowParents = narrowDependencies.map(_.rdd)
       val narrowParentsNotVisited = narrowParents.filterNot(ancestors.contains)
       narrowParentsNotVisited.foreach { parent =>
-        ancestors.add(parent)
-        visit(parent)
+        if (!genSubgraphOpt || ancestors.size < ancestorNum ) {
+          ancestors.add(parent)
+          visit(parent)
+        }
       }
     }
 
