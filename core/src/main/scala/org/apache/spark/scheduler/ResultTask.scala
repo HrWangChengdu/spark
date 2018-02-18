@@ -91,6 +91,10 @@ private[spark] class ResultTask[T, U](
     taskBinary_subgraph = buffer
   }
 
+  override def setFullTaskBinary(t: Broadcast[Array[Byte]]) {
+    taskBinary = t
+  }
+
   override def runTask(context: TaskContext): U = {
     // Deserialize the RDD and the func using the broadcast variables.
     val threadMXBean = ManagementFactory.getThreadMXBean

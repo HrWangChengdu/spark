@@ -87,6 +87,10 @@ private[spark] class ShuffleMapTask(
     taskBinary_subgraph = buffer
   }
 
+  override def setFullTaskBinary(t: Broadcast[Array[Byte]]) {
+    taskBinary = t
+  }
+
   /** A constructor used only in test suites. This does not require passing in an RDD. */
   def this(partitionId: Int) {
     this(0, 0, null, null, new Partition { override def index: Int = 0 }, null, null, new Properties)

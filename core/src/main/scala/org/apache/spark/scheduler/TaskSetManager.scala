@@ -32,6 +32,7 @@ import org.apache.spark.scheduler.SchedulingMode._
 import org.apache.spark.TaskState.TaskState
 import org.apache.spark.util.{AccumulatorV2, Clock, SystemClock, Utils}
 import org.apache.log4j.LogManager
+import org.apache.spark.broadcast.Broadcast
 
 /**
  * Schedules the tasks within a single TaskSet in the TaskSchedulerImpl. This class keeps track of
@@ -72,6 +73,16 @@ private[spark] class TaskSetManager(
   val taskSendSer = env.taskSentSerializer.newInstance()
 
   val tasks = taskSet.tasks
+
+  var taskbinary_ : Broadcast[Array[Byte]] = null
+
+  private val taskbinary: Broadcast[Array[Byte]] = {
+    if (taskbinary_ == null) {
+      taskbinary_ = taskSet.generateFullTaskBinary()
+    }
+    taskbinary_
+  }
+
   val numTasks = tasks.length
   val copiesRunning = new Array[Int](numTasks)
   val successful = new Array[Boolean](numTasks)
@@ -449,10 +460,9 @@ private[spark] class TaskSetManager(
               task.switchSubTaskBinary
             }
           } else if (numFailures(index) == 1) {
-            // TODO: seperate subgraph failures from others
             task.restoreToFullPartition()
             if (genSubgraphDependencies)
-              task.switchSubTaskBinary
+              task.setFullTaskBinary(taskbinary)
           }
         }
         val taskId = sched.newTaskId()

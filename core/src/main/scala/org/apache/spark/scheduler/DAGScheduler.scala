@@ -1108,9 +1108,14 @@ class DAGScheduler(
     // where the JobConf/Configuration object is not thread-safe.
     var taskBinary: Broadcast[Array[Byte]] = null
     var taskBinary_subgraph: Broadcast[Array[Byte]] = null
-    try {
+
+    // The taskBinary with full lineage is generated upon failure when caching optimization flag is on.
+    // Instead of makeing it now, we pass a function to generate the binary on demand to save computation
+    // if there's no failure
+    def stageToBroadCast(): Broadcast[Array[Byte]] = {
       // For ShuffleMapTask, serialize and broadcast (rdd, shuffleDep).
       // For ResultTask, serialize and broadcast (rdd, func).
+
       val taskBinaryBytes: Array[Byte] = stage match {
         case stage: ShuffleMapStage =>
           JavaUtils.bufferToArray(
@@ -1132,11 +1137,13 @@ class DAGScheduler(
             network_log.info(s"TempLog: broadcasting rdd len is ${rdd_object.limit}, dep len is ${dep_object.limit}, func len is ${func_object.limit}")
         }
       }
-
       logInfo("# Bytes of taskBinaryBytes: " + taskBinaryBytes.length)
-      taskBinary = sc.broadcast(taskBinaryBytes)
-
-      if (genSubgraphDependencies) {
+      sc.broadcast(taskBinaryBytes)
+    }
+    try {
+      if (!genSubgraphDependencies) {
+        taskBinary = stageToBroadCast()
+      } else {
         for (rdd <- existingRDDs) {
           rdd.not_send_full_dependencies
         }
@@ -1162,7 +1169,7 @@ class DAGScheduler(
           }
         }
 
-        logInfo("# Bytes of taskBinaryBytes: " + taskBinaryBytes_subgraph.length)
+        logInfo("# Bytes of taskBinaryBytes(subgraph): " + taskBinaryBytes_subgraph.length)
         taskBinary_subgraph = sc.broadcast(taskBinaryBytes_subgraph)
 
         for (rdd <- existingRDDs) {
@@ -1233,10 +1240,11 @@ class DAGScheduler(
       logInfo(s"SubGraph Info genSubgraphOpt: $genSubgraphOpt")
       if (genSubgraphOpt) {
         taskScheduler.submitTasks(new TaskSet(
-          tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties, stage.rdd.subgraphPartitions(existingRDDs)))
+          tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties, stage.rdd.subgraphPartitions(existingRDDs), stageToBroadCast))
+
       } else {
         taskScheduler.submitTasks(new TaskSet(
-          tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties, null))
+          tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties, null, null))
       }
       stage.latestInfo.submissionTime = Some(clock.getTimeMillis())
     } else {
