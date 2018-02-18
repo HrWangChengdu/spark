@@ -628,8 +628,12 @@ class DAGScheduler(
         val s = stages.head
         s.jobIds += jobId
         jobIdToStageIds.getOrElseUpdate(jobId, new HashSet[Int]()) += s.id
-        val parentsWithoutThisJobId = s.parents.filter { ! _.jobIds.contains(jobId) }
-        updateJobIdStageIdMapsList(parentsWithoutThisJobId ++ stages.tail)
+        // Only update the job of current stage when cache opt is turned on
+        // in case the parent stages grow to long due to long lineage
+        if (!genSubgraphOpt) {
+          val parentsWithoutThisJobId = s.parents.filter { ! _.jobIds.contains(jobId) }
+          updateJobIdStageIdMapsList(parentsWithoutThisJobId ++ stages.tail)
+        }
       }
     }
     updateJobIdStageIdMapsList(List(stage))
