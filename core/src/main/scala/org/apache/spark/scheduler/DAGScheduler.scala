@@ -330,7 +330,20 @@ class DAGScheduler(
   def createShuffleMapStage(shuffleDep: ShuffleDependency[_, _, _], jobId: Int): ShuffleMapStage = {
     val rdd = shuffleDep.rdd
     val numTasks = rdd.partitions.length
-    val parents = getOrCreateParentStages(rdd, jobId)
+    // Generate only unfinished parent stages if cache opt is tunred on.
+    // If the parent stage is already finished, then it is not needed
+    // in submitWaitingChildStages()
+    // While the number of finished parent stages could be very long,
+    // when lineage is long. get all the parent srages is expensive
+    // and unnecessary for the stage scheduling
+
+    // TODO: clean all the stages when a failure occurs
+    // So that the missing parent stages are updated.
+    val parents = if (genSubgraphOpt)
+      getOrCreateMissingParentStages(rdd, jobId)
+    else
+      getOrCreateParentStages(rdd, jobId)
+
     val id = nextStageId.getAndIncrement()
     val stage = new ShuffleMapStage(id, rdd, numTasks, parents, jobId, rdd.creationSite, shuffleDep)
 
@@ -368,7 +381,11 @@ class DAGScheduler(
       partitions: Array[Int],
       jobId: Int,
       callSite: CallSite): ResultStage = {
-    val parents = getOrCreateParentStages(rdd, jobId)
+    // Please find comment in createShuffleMapStage
+    val parents = if (genSubgraphOpt)
+      getOrCreateMissingParentStages(rdd, jobId)
+    else
+      getOrCreateParentStages(rdd, jobId)
     val id = nextStageId.getAndIncrement()
     val stage = new ResultStage(id, rdd, func, partitions, parents, jobId, callSite)
     stageIdToStage(id) = stage
@@ -386,6 +403,18 @@ class DAGScheduler(
     }.toList
   }
 
+  /**
+   * Get or create the list of the missing parent stages for a given RDD.  The new Stages will be created with
+   * the provided firstJobId.
+   *
+   * Missing Parent Stages refer to those have not been computed out yet
+   */
+  private def getOrCreateMissingParentStages(rdd: RDD[_], firstJobId: Int): List[Stage] = {
+    getMissingShuffleDependencies(rdd).map { shuffleDep =>
+      getOrCreateShuffleMapStage(shuffleDep, firstJobId)
+    }.toList
+  }
+
   /** Find ancestor shuffle dependencies that are not registered in shuffleToMapStage yet */
   private def getMissingAncestorShuffleDependencies(
       rdd: RDD[_]): Stack[ShuffleDependency[_, _, _]] = {
@@ -399,7 +428,12 @@ class DAGScheduler(
       val toVisit = waitingForVisit.pop()
       if (!visited(toVisit)) {
         visited += toVisit
-        getShuffleDependencies(toVisit).foreach { shuffleDep =>
+        val deps = if (genSubgraphOpt)
+          getMissingShuffleDependencies(toVisit)
+        else
+          getShuffleDependencies(toVisit)
+
+        deps.foreach { shuffleDep =>
           if (!shuffleIdToMapStage.contains(shuffleDep.shuffleId)) {
             ancestors.push(shuffleDep)
             waitingForVisit.push(shuffleDep.rdd)
@@ -437,6 +471,45 @@ class DAGScheduler(
             parents += shuffleDep
           case dependency =>
             waitingForVisit.push(dependency.rdd)
+        }
+      }
+    }
+    parents
+  }
+
+  /**
+   * Returns the missing shuffle dependencies that are immediate parents of the given RDD.
+   * Missing dependencies refer to those dependencies relate to a missing
+   * RDD.
+   * If a RDD is already available, such dependencies won't be added.
+   *
+   * This function will not return more distant ancestors.  For example, if C has a shuffle
+   * dependency on B which has a shuffle dependency on A:
+   *
+   * A <-- B <-- C
+   *
+   * calling this function with rdd C will only return the B <-- C dependency.
+   *
+   * This function is scheduler-visible for the purpose of unit testing.
+   */
+  private[scheduler] def getMissingShuffleDependencies(
+      rdd: RDD[_]): HashSet[ShuffleDependency[_, _, _]] = {
+    val parents = new HashSet[ShuffleDependency[_, _, _]]
+    val visited = new HashSet[RDD[_]]
+    val waitingForVisit = new Stack[RDD[_]]
+    waitingForVisit.push(rdd)
+    while (waitingForVisit.nonEmpty) {
+      val toVisit = waitingForVisit.pop()
+      if (!visited(toVisit)) {
+        visited += toVisit
+        val rddHasUncachedPartitions = getCacheLocs(toVisit).contains(Nil)
+        if (rddHasUncachedPartitions) {
+          toVisit.dependencies.foreach {
+            case shuffleDep: ShuffleDependency[_, _, _] =>
+              parents += shuffleDep
+            case dependency =>
+              waitingForVisit.push(dependency.rdd)
+          }
         }
       }
     }
