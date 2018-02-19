@@ -76,7 +76,7 @@ private[spark] class TaskSetManager(
 
   var taskbinary_ : Broadcast[Array[Byte]] = null
 
-  private val taskbinary: Broadcast[Array[Byte]] = {
+  private def taskbinary(): Broadcast[Array[Byte]] = {
     if (taskbinary_ == null) {
       taskbinary_ = taskSet.generateFullTaskBinary()
     }
@@ -460,9 +460,10 @@ private[spark] class TaskSetManager(
               task.switchSubTaskBinary
             }
           } else if (numFailures(index) == 1) {
+            network_log.info("Fails. generate full task binary")
             task.restoreToFullPartition()
             if (genSubgraphDependencies)
-              task.setFullTaskBinary(taskbinary)
+              task.setFullTaskBinary(taskbinary())
           }
         }
         val taskId = sched.newTaskId()
