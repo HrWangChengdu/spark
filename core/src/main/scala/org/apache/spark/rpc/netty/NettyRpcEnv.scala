@@ -38,7 +38,7 @@ import org.apache.spark.network.netty.SparkTransportConf
 import org.apache.spark.network.sasl.{SaslClientBootstrap, SaslServerBootstrap}
 import org.apache.spark.network.server._
 import org.apache.spark.rpc._
-import org.apache.spark.serializer.{JavaSerializer, JavaSerializerInstance, SerializerInstance, KryoSerializer, KryoSerializerInstance}
+import org.apache.spark.serializer.{JavaSerializer, JavaSerializerInstance, SerializerInstance}
 import org.apache.spark.util.{ThreadUtils, Utils}
 import org.apache.log4j.LogManager
 import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages.StatusUpdate
@@ -46,18 +46,13 @@ import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages.StatusUpd
 private[netty] class NettyRpcEnv(
     val conf: SparkConf,
     javaSerializerInstance: JavaSerializerInstance,
-    taskSentSer: ThreadLocal[SerializerInstance],
     host: String,
-    securityManager: SecurityManager,
-    val useKryo: Boolean) extends RpcEnv(conf) with Logging {
+    securityManager: SecurityManager) extends RpcEnv(conf) with Logging {
 
   private[netty] val transportConf = SparkTransportConf.fromSparkConf(
     conf.clone.set("spark.rpc.io.numConnectionsPerPeer", "1"),
     "rpc",
     conf.getInt("spark.rpc.io.threads", 0))
-
-  private[netty] val launchTaskSign:Byte = 1
-  private[netty] val nonLaunchTaskSign:Byte = 0
 
   private val printGeneral:Boolean = conf.getBoolean("spark.selflog.General", false)
   private val printTaskSentLimit:Boolean = conf.getBoolean("spark.TaskSentBreakDownLimited", false)
@@ -203,18 +198,10 @@ private[netty] class NettyRpcEnv(
       }
     } else {
       // Message to a remote RPC endpoint.
-      var bf: ByteBuffer = null
       val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
-      if (senderType.endsWith("category:LaunchTask")) {
-        if (useKryo) {
-          bf = taskSentSerialize(message)
-          assert(bf.limit < bf.capacity)
-          bf.limit(bf.limit + 1)
-          bf.put(bf.limit - 1, launchTaskSign)
-        } else {
-          bf = serialize(message)
-        }
+      var bf: ByteBuffer = serialize(message)
 
+      if (senderType.endsWith("category:LaunchTask")) {
         if (printGeneral) {
           network_log.info("Task sent byte: " + bf.limit)
         }
@@ -231,13 +218,6 @@ private[netty] class NettyRpcEnv(
           network_log.info(s"TempLog: TaskSent receiverSize $recSize")
           network_log.info(s"TempLog: TaskSent receiverNameSize $recNameSize")
           network_log.info(s"TempLog: TaskSent senderAddressSize $addressSize")
-        }
-      } else {
-        bf = serialize(message)
-        if (useKryo) {
-          assert(bf.limit < bf.capacity)
-          bf.limit(bf.limit + 1)
-          bf.put(bf.limit - 1, nonLaunchTaskSign)
         }
       }
       postToOutbox(message.receiver, OneWayOutboxMessage(bf))
@@ -277,17 +257,9 @@ private[netty] class NettyRpcEnv(
         dispatcher.postLocalMessage(message, p)
       } else {
 
-        var bf: ByteBuffer = null
         val network_log = org.apache.log4j.LogManager.getLogger("networkLogger")
+        var bf: ByteBuffer = serialize(message)
         if (senderType.endsWith("category:LaunchTask")) {
-          if (useKryo) {
-            bf = taskSentSerialize(message)
-            assert(bf.limit < bf.capacity)
-            bf.limit(bf.limit + 1)
-            bf.put(bf.limit - 1, launchTaskSign)
-          } else {
-            bf = serialize(message)
-          }
 
           if (printTaskSentLimit) {
             network_log.info(s"TempLog: TaskSent messageSize ${bf.limit}")
@@ -301,13 +273,6 @@ private[netty] class NettyRpcEnv(
             network_log.info(s"TempLog: TaskSent receiverSize $recSize")
             network_log.info(s"TempLog: TaskSent receiverNameSize $recNameSize")
             network_log.info(s"TempLog: TaskSent senderAddressSize $addressSize")
-          }
-        } else {
-          bf = serialize(message)
-          if (useKryo) {
-            assert(bf.limit < bf.capacity)
-            bf.limit(bf.limit + 1)
-            bf.put(bf.limit - 1, nonLaunchTaskSign)
           }
         }
         if (printGeneral) {
@@ -342,20 +307,6 @@ private[netty] class NettyRpcEnv(
   private[netty] def serialize(content: Any): ByteBuffer = {
     javaSerializerInstance.serialize(content)
   }
-  private[netty] def taskSentSerialize(content: Any): ByteBuffer = {
-    if (taskSentSer.get() == null) {
-      var ser:SerializerInstance = null
-      try {
-        conf.get("spark.taskSendSerializer")
-        ser = new KryoSerializer(conf).newInstance().asInstanceOf[KryoSerializerInstance]
-      } catch {
-        case e: Exception =>
-          ser = new JavaSerializer(conf).newInstance().asInstanceOf[JavaSerializerInstance]
-      }
-      taskSentSer.set(ser)
-    }
-    taskSentSer.get().serialize(content)
-  }
 
   private[netty] def deserialize[T: ClassTag](client: TransportClient, bytes: ByteBuffer): T = {
     NettyRpcEnv.currentClient.withValue(client) {
@@ -364,26 +315,6 @@ private[netty] class NettyRpcEnv(
       }
     }
   }
-
-  private[netty] def taskSentDeserialize[T: ClassTag](client: TransportClient, bytes: ByteBuffer): T = {
-    NettyRpcEnv.currentClient.withValue(client) {
-      deserialize { () =>
-        if (taskSentSer.get() == null) {
-          var ser:SerializerInstance = null
-          try {
-            conf.get("spark.taskSendSerializer")
-            ser = new KryoSerializer(conf).newInstance().asInstanceOf[KryoSerializerInstance]
-          } catch {
-            case e: Exception =>
-              ser = new JavaSerializer(conf).newInstance().asInstanceOf[JavaSerializerInstance]
-          }
-          taskSentSer.set(ser)
-        }
-        taskSentSer.get().deserialize[T](bytes)
-      }
-    }
-  }
-
 
   override def endpointRef(endpoint: RpcEndpoint): RpcEndpointRef = {
     dispatcher.getRpcEndpointRef(endpoint)
@@ -562,30 +493,9 @@ private[rpc] class NettyRpcEnvFactory extends RpcEnvFactory with Logging {
     // KryoSerializer in future, we have to use ThreadLocal to store SerializerInstance
     val javaSerializerInstance =
       new JavaSerializer(sparkConf).newInstance().asInstanceOf[JavaSerializerInstance]
-    var taskSentSer:SerializerInstance = null
-
-    var useKryo:Boolean = true
-
-    try {
-      sparkConf.get("spark.taskSendSerializer")
-      taskSentSer = new KryoSerializer(sparkConf).newInstance().asInstanceOf[KryoSerializerInstance]
-    } catch {
-      case e: Exception =>
-        // For executor
-        if (System.getenv("taskSendSerializerKryo") == "true") {
-          taskSentSer = new KryoSerializer(sparkConf).newInstance().asInstanceOf[KryoSerializerInstance]
-        } else {
-          useKryo = false
-          taskSentSer = new JavaSerializer(sparkConf).newInstance().asInstanceOf[JavaSerializerInstance]
-        }
-    }
-
-    val threadlocalTaskSentSer = new ThreadLocal[SerializerInstance]()
-    threadlocalTaskSentSer.set(taskSentSer)
 
     val nettyEnv =
-      new NettyRpcEnv(sparkConf, javaSerializerInstance, threadlocalTaskSentSer, config.advertiseAddress,
-        config.securityManager, useKryo)
+      new NettyRpcEnv(sparkConf, javaSerializerInstance, config.advertiseAddress, config.securityManager)
     if (!config.clientMode) {
       val startNettyRpcEnv: Int => (NettyRpcEnv, Int) = { actualPort =>
         nettyEnv.startServer(config.bindAddress, actualPort)
@@ -746,18 +656,7 @@ TempLog: SU data ${nettyEnv.serialize(stateUpdate.data).limit}""")
     val clientAddr = RpcAddress(addr.getHostString, addr.getPort)
 
     var requestMessage: RequestMessage = null
-    // Fetch the message type
-    if (nettyEnv.useKryo) {
-      val messageType = message.get(message.limit - 1)
-      message.limit(message.limit - 1)
-      if (messageType == nettyEnv.launchTaskSign) {
-        requestMessage = nettyEnv.taskSentDeserialize[RequestMessage](client, message)
-      } else {
-        requestMessage = nettyEnv.deserialize[RequestMessage](client, message)
-      }
-    } else {
-      requestMessage = nettyEnv.deserialize[RequestMessage](client, message)
-    }
+    requestMessage = nettyEnv.deserialize[RequestMessage](client, message)
 
     if (requestMessage.senderAddress == null) {
       // Create a new message with the socket address of the client as the sender.

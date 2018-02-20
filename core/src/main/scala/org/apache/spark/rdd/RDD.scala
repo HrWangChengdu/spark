@@ -233,7 +233,6 @@ abstract class RDD[T: ClassTag](
   var dependencies_ : Seq[Dependency[_]] = null
   @transient var org_dependencies_ : Seq[Dependency[_]] = null
 
-  // @transient protected val tmp_ser: SerializerInstance = SparkEnv.get.taskSentSerializer.newInstance()
   @transient private var partitions_ : Array[Partition] = null
   @transient private var shawllowPartitions_ : Array[Partition] = null
   @transient private var subgraphPartitions_ : Array[Partition] = null
