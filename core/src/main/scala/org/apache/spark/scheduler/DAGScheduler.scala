@@ -738,6 +738,7 @@ class DAGScheduler(
       // Return immediately if the job is running 0 tasks
       return new JobWaiter[U](this, jobId, 0, resultHandler)
     }
+    logInfo("Used Memory: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024) + " MB")
 
     assert(partitions.size > 0)
     val func2 = func.asInstanceOf[(TaskContext, Iterator[_]) => _]
@@ -991,6 +992,8 @@ class DAGScheduler(
       callSite: CallSite,
       listener: JobListener,
       properties: Properties) {
+
+    var start = System.nanoTime
     var finalStage: ResultStage = null
     try {
       // New stage creation may throw an exception if, for example, jobs are run on a
@@ -1005,11 +1008,14 @@ class DAGScheduler(
 
     val job = new ActiveJob(jobId, finalStage, callSite, listener, properties)
     clearCacheLocs()
+    logInfo("MakeJob took %f s".format((System.nanoTime - start) / 1e9))
     logInfo("Got job %s (%s) with %d output partitions".format(
       job.jobId, callSite.shortForm, partitions.length))
     logInfo("Final stage: " + finalStage + " (" + finalStage.name + ")")
+    start = System.nanoTime
     logInfo("Parents of final stage: " + finalStage.parents)
     logInfo("Missing parents: " + getMissingParentStages(finalStage))
+    logInfo("Get Missing Parents & print took %f s".format((System.nanoTime - start) / 1e9))
 
     val jobSubmissionTime = clock.getTimeMillis()
     jobIdToActiveJob(jobId) = job
@@ -1033,6 +1039,7 @@ class DAGScheduler(
     try {
       // New stage creation may throw an exception if, for example, jobs are run on a
       // HadoopRDD whose underlying HDFS files have been deleted.
+      logInfo("get serialized in handleMapStageSubmitted")
       finalStage = getOrCreateShuffleMapStage(dependency, jobId)
     } catch {
       case e: Exception =>
@@ -1183,6 +1190,7 @@ class DAGScheduler(
     // task gets a different copy of the RDD. This provides stronger isolation between tasks that
     // might modify state of objects referenced in their closures. This is necessary in Hadoop
     // where the JobConf/Configuration object is not thread-safe.
+    val start = System.nanoTime
     var taskBinary: Broadcast[Array[Byte]] = null
     var taskBinary_subgraph: Broadcast[Array[Byte]] = null
 
@@ -1266,6 +1274,8 @@ class DAGScheduler(
         runningStages -= stage
         return
     }
+    logInfo("task binary serialize time %f s".format
+      ((System.nanoTime - start) / 1e9))
 
     // (Haoran): Information printed below is about broadcast block. not relates to task sent items
     if (printBC) {
@@ -1439,8 +1449,10 @@ class DAGScheduler(
                   job.numFinished += 1
                   // If the whole job has finished, remove it
                   if (job.numFinished == job.numPartitions) {
+                    val start = System.nanoTime
                     markStageAsFinished(resultStage)
                     cleanupStateForJobAndIndependentStages(job)
+                    logInfo("CleanStage and Print took %f s".format((System.nanoTime - start) / 1e9))
                     listenerBus.post(
                       SparkListenerJobEnd(job.jobId, clock.getTimeMillis(), JobSucceeded))
                   }
