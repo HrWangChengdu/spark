@@ -356,17 +356,17 @@ abstract class RDD[T: ClassTag](
       context.taskAttemptId().toString() + ",Partition Id:" + context.partitionId().toString +
       ",Stage Id:" + context.stageId().toString
     if (storageLevel != StorageLevel.NONE) {
-      extra_log.info("[iterator.FromCache]StartAt:" + System.currentTimeMillis().toString + ","
+      extra_log.info("[iterator.getOrCompute]StartAt:" + System.currentTimeMillis().toString + ","
         + basicLogComponent)
       val funcret = getOrCompute(split, context)
-      extra_log.info("[iterator.FromCache]EndAt:" + System.currentTimeMillis().toString + ","
+      extra_log.info("[iterator.getOrCompute]EndAt:" + System.currentTimeMillis().toString + ","
         + basicLogComponent)
       funcret
     } else {
-      extra_log.info("[iterator.FromParent]StartAt:" + System.currentTimeMillis().toString + ","
+      extra_log.info("[iterator.computeOrReadCheckpoint]StartAt:" + System.currentTimeMillis().toString + ","
         + basicLogComponent)
       val funcret = computeOrReadCheckpoint(split, context)
-      extra_log.info("[iterator.FromParent]EndAt:" + System.currentTimeMillis().toString + ","
+      extra_log.info("[iterator.computeOrReadCheckpoint]EndAt:" + System.currentTimeMillis().toString + ","
         + basicLogComponent)
       funcret
     }
