@@ -535,10 +535,12 @@ class DAGScheduler(
         }
       }
     }
+
     waitingForVisit.push(stage.rdd)
     while (waitingForVisit.nonEmpty) {
       visit(waitingForVisit.pop())
     }
+    logInfo(s"Number of Visited RDDs in getMissing are ${visited.size}")
     missing.toList
   }
 
@@ -975,7 +977,9 @@ class DAGScheduler(
     logInfo("Final stage: " + finalStage + " (" + finalStage.name + ")")
     start = System.nanoTime
     logInfo("Parents of final stage: " + finalStage.parents)
-    logInfo("Missing parents: " + getMissingParentStages(finalStage))
+    logInfo(s"Parents length is : ${finalStage.parents.length}")
+    val missingStages = getMissingParentStages(finalStage)
+    logInfo("Missing parents: " + missingStages)
     logInfo("Get Missing Parents & print took %f s".format((System.nanoTime - start) / 1e9))
 
     val jobSubmissionTime = clock.getTimeMillis()
@@ -1014,7 +1018,9 @@ class DAGScheduler(
       jobId, callSite.shortForm, dependency.rdd.partitions.length))
     logInfo("Final stage: " + finalStage + " (" + finalStage.name + ")")
     logInfo("Parents of final stage: " + finalStage.parents)
-    logInfo("Missing parents: " + getMissingParentStages(finalStage))
+    val missingStages = getMissingParentStages(finalStage)
+    logInfo("Missing parents: " + missingStages)
+    logInfo(s"Missing parents length is : ${missingStages.length}")
 
     val jobSubmissionTime = clock.getTimeMillis()
     jobIdToActiveJob(jobId) = job

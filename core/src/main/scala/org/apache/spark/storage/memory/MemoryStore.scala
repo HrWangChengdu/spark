@@ -181,6 +181,7 @@ private[spark] class MemoryStore(
       values: Iterator[T],
       classTag: ClassTag[T]): Either[PartiallyUnrolledIterator[T], Long] = {
 
+    val t0 =  System.nanoTime
     require(!contains(blockId), s"Block $blockId is already present in the MemoryStore")
 
     // Number of elements unrolled so far
@@ -234,9 +235,13 @@ private[spark] class MemoryStore(
     if (keepUnrolling) {
       // We successfully unrolled the entirety of this block
       val arrayValues = vector.toArray
+      val t1 =  System.nanoTime
       vector = null
+      val tmpSize = SizeEstimator.estimate(arrayValues)
+      logInfo("estmate size took %f s".format((System.nanoTime - t1) / 1e9))
+
       val entry =
-        new DeserializedMemoryEntry[T](arrayValues, SizeEstimator.estimate(arrayValues), classTag)
+        new DeserializedMemoryEntry[T](arrayValues, tmpSize, classTag)
       val size = entry.size
       def transferUnrollToStorage(amount: Long): Unit = {
         // Synchronize so that transfer is atomic
@@ -271,10 +276,12 @@ private[spark] class MemoryStore(
         }
         logInfo("Block %s stored as values in memory (estimated size %s, free %s)".format(
           blockId, Utils.bytesToString(size), Utils.bytesToString(maxMemory - blocksMemoryUsed)))
+        logInfo("total put iterator took %f s".format((System.nanoTime - t0) / 1e9))
         Right(size)
       } else {
         assert(currentUnrollMemoryForThisTask >= unrollMemoryUsedByThisBlock,
           "released too much unroll memory")
+        logInfo("total put iterator took %f s".format((System.nanoTime - t0) / 1e9))
         Left(new PartiallyUnrolledIterator(
           this,
           MemoryMode.ON_HEAP,
@@ -285,6 +292,7 @@ private[spark] class MemoryStore(
     } else {
       // We ran out of space while unrolling the values for this block
       logUnrollFailureMessage(blockId, vector.estimateSize())
+      logInfo("total put iterator took %f s".format((System.nanoTime - t0) / 1e9))
       Left(new PartiallyUnrolledIterator(
         this,
         MemoryMode.ON_HEAP,

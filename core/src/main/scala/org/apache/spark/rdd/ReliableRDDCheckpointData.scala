@@ -55,6 +55,7 @@ private[spark] class ReliableRDDCheckpointData[T: ClassTag](@transient private v
    * This is called immediately after the first action invoked on this RDD has completed.
    */
   protected override def doCheckpoint(): CheckpointRDD[T] = {
+    val start = System.nanoTime
     val newRDD = ReliableCheckpointRDD.writeRDDToCheckpointDirectory(rdd, cpDir)
 
     // Optionally clean our checkpoint files if the reference is out of scope
@@ -63,6 +64,8 @@ private[spark] class ReliableRDDCheckpointData[T: ClassTag](@transient private v
         cleaner.registerRDDCheckpointDataForCleanup(newRDD, rdd.id)
       }
     }
+    logInfo("save checkpointing took %f ms".format
+      ((System.nanoTime - start) / 1e6))
 
     logInfo(s"Done checkpointing RDD ${rdd.id} to $cpDir, new parent is RDD ${newRDD.id}")
     newRDD

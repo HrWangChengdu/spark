@@ -25,6 +25,7 @@ import scala.reflect.ClassTag
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.streaming.{State, StateImpl, Time}
+import org.apache.spark.internal.Logging
 import org.apache.spark.streaming.util.{EmptyStateMap, StateMap}
 import org.apache.spark.util.Utils
 
@@ -35,7 +36,7 @@ import org.apache.spark.util.Utils
 private[streaming] case class MapWithStateRDDRecord[K, S, E](
     var stateMap: StateMap[K, S], var mappedData: Seq[E])
 
-private[streaming] object MapWithStateRDDRecord {
+private[streaming] object MapWithStateRDDRecord extends Logging {
   def updateRecordWithData[K: ClassTag, V: ClassTag, S: ClassTag, E: ClassTag](
     prevRecord: Option[MapWithStateRDDRecord[K, S, E]],
     dataIterator: Iterator[(K, V)],
@@ -44,6 +45,8 @@ private[streaming] object MapWithStateRDDRecord {
     timeoutThresholdTime: Option[Long],
     removeTimedoutData: Boolean
   ): MapWithStateRDDRecord[K, S, E] = {
+
+    val t0 =  System.nanoTime
     // Create a new state map by cloning the previous one (if it exists) or by creating an empty one
     val newStateMap = prevRecord.map { _.stateMap.copy() }. getOrElse { new EmptyStateMap[K, S]() }
 
@@ -63,6 +66,8 @@ private[streaming] object MapWithStateRDDRecord {
       }
       mappedData ++= returned
     }
+    logInfo("generate new map data takes %f ms".format((System.nanoTime - t0) / 1e6))
+
 
     // Get the timed out state records, call the mapping function on each and collect the
     // data returned
@@ -151,6 +156,10 @@ private[streaming] class MapWithStateRDD[K: ClassTag, V: ClassTag, S: ClassTag, 
       new OneToOneDependency(partitionedDataRDD))
   ) {
 
+
+  val manuallyDoCompact: Boolean = partitionedDataRDD.sparkContext.getConf.getBoolean("spark.cacheopt.ManuallyDoCompact", false)
+  val useIncCompact: Boolean = partitionedDataRDD.sparkContext.getConf.getBoolean("spark.cacheopt.UseIncCompact", false)
+  val checkpointInterval: Int = partitionedDataRDD.sparkContext.getConf.getInt("spark.cacheopt.CheckpointInterval", 10)
   @volatile private var doFullScan = false
   @transient var org_prevStateRDD :RDD[MapWithStateRDDRecord[K, S, E]] = null
   @transient var org_partitionedDataRDD : RDD[(K, V)] = null
@@ -203,16 +212,31 @@ private[streaming] class MapWithStateRDD[K: ClassTag, V: ClassTag, S: ClassTag, 
       stateRDDPartition.previousSessionRDDPartition, context)
     val dataIterator = partitionedDataRDD.iterator(
       stateRDDPartition.partitionedDataRDDPartition, context)
+    val t0 =  System.nanoTime
 
     val prevRecord = if (prevStateRDDIterator.hasNext) Some(prevStateRDDIterator.next()) else None
+    logInfo("getting prev record takes %f s".format((System.nanoTime - t0) / 1e9))
+
+    logInfo("timeoutThresholdTime.isDefined %b".format(timeoutThresholdTime.isDefined))
+
     val newRecord = MapWithStateRDDRecord.updateRecordWithData(
       prevRecord,
       dataIterator,
       mappingFunction,
       batchTime,
       timeoutThresholdTime,
-      removeTimedoutData = doFullScan // remove timedout data only when full scan is enabled
+      //removeTimedoutData = doFullScan // remove timedout data only when full scan is enabled
+      removeTimedoutData = true
     )
+    logInfo("getting new record& prev record takes %f s".format((System.nanoTime - t0) / 1e9))
+
+    if (useCacheOpt && manuallyDoCompact && batchTime.milliseconds % (100*checkpointInterval) == 0) {
+      if (useIncCompact) {
+        newRecord.stateMap.manuallyIncrementalCompact
+      } else {
+        newRecord.stateMap.manuallyCompact
+      }
+    }
     Iterator(newRecord)
   }
 

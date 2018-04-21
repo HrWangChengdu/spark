@@ -122,11 +122,12 @@ class InternalMapWithStateDStream[K: ClassTag, V: ClassTag, S: ClassTag, E: Clas
   // Allow turning off the checkpoint option so that streaming app without checkpointing could
   // be tested
   override val mustCheckpoint = !SparkEnv.get.conf.getBoolean("spark.cacheopt.UseCacheOpt", false)
+  val checkpointInterval: Int = SparkEnv.get.conf.getInt("spark.cacheopt.CheckpointInterval", 10)
 
   /** Override the default checkpoint duration */
   override def initialize(time: Time): Unit = {
     if (mustCheckpoint && checkpointDuration == null) {
-      checkpointDuration = slideDuration * DEFAULT_CHECKPOINT_DURATION_MULTIPLIER
+      checkpointDuration = slideDuration * checkpointInterval
     }
     super.initialize(time)
   }
@@ -169,5 +170,6 @@ class InternalMapWithStateDStream[K: ClassTag, V: ClassTag, S: ClassTag, E: Clas
 }
 
 private[streaming] object InternalMapWithStateDStream {
+  //private val DEFAULT_CHECKPOINT_DURATION_MULTIPLIER = 100
   private val DEFAULT_CHECKPOINT_DURATION_MULTIPLIER = 10
 }

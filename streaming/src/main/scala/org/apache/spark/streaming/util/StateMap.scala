@@ -24,6 +24,7 @@ import scala.reflect.ClassTag
 import com.esotericsoftware.kryo.{Kryo, KryoSerializable}
 import com.esotericsoftware.kryo.io.{Input, Output}
 
+import org.apache.spark.internal.Logging
 import org.apache.spark.SparkConf
 import org.apache.spark.serializer.{KryoInputObjectInputBridge, KryoOutputObjectOutputBridge}
 import org.apache.spark.streaming.util.OpenHashMapBasedStateMap._
@@ -34,6 +35,8 @@ import org.apache.spark.util.CachedSizeEstimation
 // Extends statemap with CachedSizeEstimation so that the CPU time oin size estimation is controlled
 private[streaming] abstract class StateMap[K, S] extends Serializable with CachedSizeEstimation{
 
+  var compactedTimes: Int = 0
+
   /** Get the state for a key if it exists */
   def get(key: K): Option[S]
 
@@ -42,6 +45,12 @@ private[streaming] abstract class StateMap[K, S] extends Serializable with Cache
 
   /** Get all the keys and states in this map. */
   def getAll(): Iterator[(K, S, Long)]
+
+  def getDataFromLastKAncestors(dep: Int): Iterator[(K, S, Long)]
+
+  def getKParent(dep: Int): StateMap[K, S]
+
+  def sameCompactLen(expectedCompactTimes: Int): Int
 
   /** Add or update state */
   def put(key: K, state: S, updatedTime: Long): Unit
@@ -54,6 +63,9 @@ private[streaming] abstract class StateMap[K, S] extends Serializable with Cache
    * Updates to the new map should not mutate `this` map.
    */
   def copy(): StateMap[K, S]
+
+  def manuallyCompact(): Unit
+  def manuallyIncrementalCompact(): Unit
 
   def toDebugString(): String = toString()
 }
@@ -77,8 +89,17 @@ private[streaming] class EmptyStateMap[K, S] extends StateMap[K, S] {
   override def get(key: K): Option[S] = None
   override def getByTime(threshUpdatedTime: Long): Iterator[(K, S, Long)] = Iterator.empty
   override def getAll(): Iterator[(K, S, Long)] = Iterator.empty
+  override def getDataFromLastKAncestors(dep: Int): Iterator[(K, S, Long)] = Iterator.empty
+  override def getKParent(dep: Int): StateMap[K, S] = {
+    assert(dep == 1)
+    this
+  }
+
+  override def sameCompactLen(expectedCompactTimes: Int): Int = 0
   override def copy(): StateMap[K, S] = this
   override def remove(key: K): Unit = { }
+  override def manuallyCompact(): Unit = { }
+  override def manuallyIncrementalCompact(): Unit = { }
   override def toDebugString(): String = ""
 }
 
@@ -88,7 +109,7 @@ private[streaming] class OpenHashMapBasedStateMap[K, S](
     private var initialCapacity: Int = DEFAULT_INITIAL_CAPACITY,
     private var deltaChainThreshold: Int = DELTA_CHAIN_LENGTH_THRESHOLD
   )(implicit private var keyClassTag: ClassTag[K], private var stateClassTag: ClassTag[S])
-  extends StateMap[K, S] with KryoSerializable { self =>
+  extends StateMap[K, S] with Logging with KryoSerializable  { self =>
 
   def this(initialCapacity: Int, deltaChainThreshold: Int)
       (implicit keyClassTag: ClassTag[K], stateClassTag: ClassTag[S]) = this(
@@ -125,6 +146,7 @@ private[streaming] class OpenHashMapBasedStateMap[K, S](
 
   /** Get all the keys and states whose updated time is older than the give threshold time */
   override def getByTime(threshUpdatedTime: Long): Iterator[(K, S, Long)] = {
+    logInfo("get by time!!")
     val oldStates = parentStateMap.getByTime(threshUpdatedTime).filter { case (key, value, _) =>
       !deltaMap.contains(key)
     }
@@ -148,6 +170,42 @@ private[streaming] class OpenHashMapBasedStateMap[K, S](
       (key, stateInfo.data, stateInfo.updateTime)
     }
     oldStates ++ updatedStates
+  }
+
+  override def getDataFromLastKAncestors(dep: Int): Iterator[(K, S, Long)] = {
+    if (dep > 1) {
+      val oldStates = parentStateMap.getDataFromLastKAncestors(dep-1).filter { case (key, _, _) =>
+        !deltaMap.contains(key)
+      }
+      val updatedStates = deltaMap.iterator.filter { ! _._2.deleted }.map { case (key, stateInfo) =>
+        (key, stateInfo.data, stateInfo.updateTime)
+      }
+      oldStates ++ updatedStates
+    } else {
+      assert(dep == 1)
+      val updatedStates = deltaMap.iterator.filter { ! _._2.deleted }.map { case (key, stateInfo) =>
+        (key, stateInfo.data, stateInfo.updateTime)
+      }
+      updatedStates
+    }
+  }
+
+  override def getKParent(dep: Int): StateMap[K, S] = {
+    if (dep > 1) {
+      parentStateMap.getKParent(dep-1)
+    } else {
+      assert(dep == 1)
+      this
+    }
+  }
+
+  override def sameCompactLen(expectedCompactTimes: Int): Int = {
+    if (compactedTimes == expectedCompactTimes) {
+        1 + parentStateMap.sameCompactLen(expectedCompactTimes)
+    } else {
+      assert(compactedTimes > expectedCompactTimes)
+      0
+    }
   }
 
   /** Add or update state */
@@ -213,11 +271,65 @@ private[streaming] class OpenHashMapBasedStateMap[K, S](
     s"[${System.identityHashCode(this)}, ${System.identityHashCode(parentStateMap)}]"
   }
 
+  override def manuallyIncrementalCompact(): Unit = {
+    var len = parentStateMap.sameCompactLen(parentStateMap.compactedTimes)
+    while (len >= deltaChainThreshold) {
+      val t1 = System.nanoTime
+      val firstUncompactParent = parentStateMap.getKParent(len+1)
+      assert(firstUncompactParent.isInstanceOf[EmptyStateMap[K, S]]
+        || firstUncompactParent.compactedTimes > parentStateMap.compactedTimes)
+      var parentSessionCount = 0
+      val initCapacity = if (approxSize > 0) approxSize else 64
+      val newParentSessionStore =
+        new OpenHashMapBasedStateMap[K, S](firstUncompactParent, initialCapacity = initCapacity, deltaChainThreshold)
+      newParentSessionStore.compactedTimes = parentStateMap.compactedTimes + 1
+
+
+      val iterOfActiveSessions = parentStateMap.getDataFromLastKAncestors(len)
+      while(iterOfActiveSessions.hasNext) {
+        parentSessionCount += 1
+
+        val (key, state, updateTime) = iterOfActiveSessions.next()
+        newParentSessionStore.deltaMap.update(
+            key, StateInfo(state, updateTime, deleted = false))
+      }
+
+      parentStateMap = newParentSessionStore
+      logInfo("compact() on parentSessionCount %d takes %f ms with compacted times %d".format(
+        parentSessionCount, (System.nanoTime - t1) / 1e6, parentStateMap.compactedTimes))
+
+      len = parentStateMap.sameCompactLen(parentStateMap.compactedTimes)
+    }
+  }
+
+  override def manuallyCompact(): Unit = {
+    val t1 = System.nanoTime
+
+    var parentSessionCount = 0
+    val initCapacity = if (approxSize > 0) approxSize else 64
+    val newParentSessionStore =
+      new OpenHashMapBasedStateMap[K, S](initialCapacity = initCapacity, deltaChainThreshold)
+
+    val iterOfActiveSessions = parentStateMap.getAll()
+    while(iterOfActiveSessions.hasNext) {
+      parentSessionCount += 1
+
+      val (key, state, updateTime) = iterOfActiveSessions.next()
+      newParentSessionStore.deltaMap.update(
+          key, StateInfo(state, updateTime, deleted = false))
+    }
+
+    parentStateMap = newParentSessionStore
+    logInfo("compact() on parentSessionCount %d takes %f ms with compacted times %d".format(
+      parentSessionCount, (System.nanoTime - t1) / 1e6, parentStateMap.compactedTimes))
+  }
+
   /**
    * Serialize the map data. Besides serialization, this method actually compact the deltas
    * (if needed) in a single pass over all the data in the map.
    */
   private def writeObjectInternal(outputStream: ObjectOutput): Unit = {
+    var start_time:Double = System.nanoTime
     // Write the data in the delta of this state map
     outputStream.writeInt(deltaMap.size)
     val deltaMapIterator = deltaMap.iterator
@@ -238,7 +350,13 @@ private[streaming] class OpenHashMapBasedStateMap[K, S](
       new OpenHashMapBasedStateMap[K, S](initialCapacity = initCapacity, deltaChainThreshold)
     } else { null }
 
+    var compact_time:Double = 0.0
+    var num:Int = 0
+    var write_time:Double = 0.0
+    var t0 = System.nanoTime
+    var tmp_t = System.nanoTime
     val iterOfActiveSessions = parentStateMap.getAll()
+    compact_time += System.nanoTime - t0
 
     var parentSessionCount = 0
 
@@ -246,19 +364,26 @@ private[streaming] class OpenHashMapBasedStateMap[K, S](
     // allocate appropriately sized OpenHashMap.
     outputStream.writeInt(approxSize)
 
+    t0 = System.nanoTime
     while(iterOfActiveSessions.hasNext) {
       parentSessionCount += 1
 
       val (key, state, updateTime) = iterOfActiveSessions.next()
+
+      tmp_t = System.nanoTime
       outputStream.writeObject(key)
       outputStream.writeObject(state)
       outputStream.writeLong(updateTime)
+      write_time += System.nanoTime - tmp_t
+      num += 1
 
       if (doCompaction) {
         newParentSessionStore.deltaMap.update(
           key, StateInfo(state, updateTime, deleted = false))
       }
     }
+    compact_time += System.nanoTime - t0 - write_time
+    logInfo("compact() on %d ele took %f ms".format(num, compact_time / 1e6))
 
     // Write the final limit marking object with the correct count of records written.
     val limiterObj = new LimitMarker(parentSessionCount)
@@ -266,6 +391,8 @@ private[streaming] class OpenHashMapBasedStateMap[K, S](
     if (doCompaction) {
       parentStateMap = newParentSessionStore
     }
+
+    logInfo("total compact() took %f ms".format((System.nanoTime - start_time) / 1e6))
   }
 
   /** Deserialize the map data. */

@@ -352,7 +352,7 @@ abstract class RDD[T: ClassTag](
   final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
     // Log the execution time of each RDD computation
     val extra_log = org.apache.log4j.LogManager.getLogger("extraLogger_" + SparkEnv.get.executorId)
-    val basicLogComponent = "RDD ID:" + id + ",Name:" + this.name + ",TaskAttempt ID:" +
+    val basicLogComponent = "RDD ID:" + id + ",Name:" + this.getClass.getSimpleName + ",TaskAttempt ID:" +
       context.taskAttemptId().toString() + ",Partition Id:" + context.partitionId().toString +
       ",Stage Id:" + context.stageId().toString
     if (storageLevel != StorageLevel.NONE) {
