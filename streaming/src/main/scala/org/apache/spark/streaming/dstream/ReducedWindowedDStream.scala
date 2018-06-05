@@ -63,7 +63,7 @@ class ReducedWindowedDStream[K: ClassTag, V: ClassTag](
 
   // Allow turning off the checkpoint option so that streaming app without checkpointing could
   // be tested
-  override val mustCheckpoint = !SparkEnv.get.conf.getBoolean("spark.cacheopt.UseCacheOpt", false)
+  override val mustCheckpoint = !(SparkEnv.get.conf.getBoolean("spark.cacheopt.UseCacheOpt", false) ||  SparkEnv.get.conf.getBoolean("spark.cacheopt.NotDoCheckpoint", false))
 
   override def parentRememberDuration: Duration = rememberDuration + windowDuration
 

@@ -230,6 +230,22 @@ object SizeEstimator extends Logging {
         case ks: KnownSizeEstimation =>
           state.size += ks.estimatedSize
         case cs: CachedSizeEstimation =>
+          //state.size += 4000
+          //val classInfo = getClassInfo(cls)
+          //if (System.getenv("UseCacheOpt") == "true") {
+          //  if (cs.cachedSize == -1) {
+          //    cs.cachedSize = alignSize(classInfo.shellSize)
+          //    for (field <- classInfo.pointerFields) {
+          //      cs.cachedSize += estimate(field.get(obj))
+          //    }
+          //  }
+          //  state.size += cs.cachedSize
+          //} else {
+          //  state.size += alignSize(classInfo.shellSize)
+          //  for (field <- classInfo.pointerFields) {
+          //    state.enqueue(field.get(obj))
+          //  }
+          //}
           val classInfo = getClassInfo(cls)
           if (System.getenv("UseCacheOpt") == "true") {
             if (cs.cachedSize == -1) {

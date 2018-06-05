@@ -41,10 +41,11 @@ private[spark] class UnionPartition[T: ClassTag](
     idx: Int,
     @transient private val rdd: RDD[T],
     val parentRddIndex: Int,
-    @transient private val parentRddPartitionIndex: Int)
+    @transient private val parentRddPartitionIndex: Int,
+    @transient val childNoDep: Boolean = false)
   extends Partition {
 
-  var parentPartition: Partition = rdd.partitions(parentRddPartitionIndex)
+  var parentPartition: Partition = if (rdd != null)rdd.partitions(parentRddPartitionIndex) else null
 
   def preferredLocations(): Seq[String] = rdd.preferredLocations(parentPartition)
 
@@ -53,8 +54,22 @@ private[spark] class UnionPartition[T: ClassTag](
   @throws(classOf[IOException])
   private def writeObject(oos: ObjectOutputStream): Unit = Utils.tryOrIOException {
     // Update the reference to parent split at the time of task serialization
-    parentPartition = rdd.partitions(parentRddPartitionIndex)
+    if (rdd != null) {
+      if (childNoDep) {
+        parentPartition = rdd.truncatedPartitions()(parentRddPartitionIndex)
+      } else {
+        parentPartition = rdd.partitions(parentRddPartitionIndex)
+      }
+    } else {
+      parentPartition = null
+    }
     oos.defaultWriteObject()
+  }
+
+  override def noDepCopy(): Partition = {
+    val part =  new UnionPartition(idx, null, parentRddIndex, parentRddPartitionIndex)
+    part.isNoDependency = true
+    part
   }
 }
 
@@ -88,6 +103,30 @@ class UnionRDD[T: ClassTag](
       pos += 1
     }
     array
+  }
+
+  override def getTruncatedPartitions(availableRDDs: List[RDD[_]]): Array[Partition] = {
+    if (availableRDDs.contains(this)) {
+      noDepPartitions
+    } else {
+      val parRDDs = if (isPartitionListingParallel) {
+        val parArray = rdds.par
+        parArray.tasksupport = UnionRDD.partitionEvalTaskSupport
+        parArray
+      } else {
+        rdds
+      }
+      val array = new Array[Partition](parRDDs.map(_.partitions.length).seq.sum)
+      for (rdd <- rdds) {
+        rdd.truncatedPartitions(availableRDDs)
+      }
+      var pos = 0
+      for ((rdd, rddIndex) <- rdds.zipWithIndex; split <- rdd.partitions) {
+        array(pos) = new UnionPartition(pos, rdd, rddIndex, split.index, true)
+        pos += 1
+      }
+      array
+    }
   }
 
   override def getDependencies: Seq[Dependency[_]] = {

@@ -38,14 +38,30 @@ private[spark] case class CoalescedRDDPartition(
     index: Int,
     @transient rdd: RDD[_],
     parentsIndices: Array[Int],
-    @transient preferredLocation: Option[String] = None) extends Partition {
-  var parents: Seq[Partition] = parentsIndices.map(rdd.partitions(_))
+    @transient preferredLocation: Option[String] = None,
+    @transient val childNoDep: Boolean = false) extends Partition {
+  var parents: Seq[Partition] = if(rdd!=null)parentsIndices.map(rdd.partitions(_)) else null
 
   @throws(classOf[IOException])
   private def writeObject(oos: ObjectOutputStream): Unit = Utils.tryOrIOException {
     // Update the reference to parent partition at the time of task serialization
-    parents = parentsIndices.map(rdd.partitions(_))
+    if (rdd != null) {
+      if (childNoDep) {
+        parents = parentsIndices.map(rdd.truncatedPartitions()(_))
+      } else {
+        parents = parentsIndices.map(rdd.partitions(_))
+      }
+    } else {
+      parents = null
+    }
+
     oos.defaultWriteObject()
+  }
+
+  override def noDepCopy(): Partition = {
+    val part =  new CoalescedRDDPartition(index, null, parentsIndices, preferredLocation)
+    part.isNoDependency = true
+    part
   }
 
   /**
@@ -92,6 +108,21 @@ private[spark] class CoalescedRDD[T: ClassTag](
       case (pg, i) =>
         val ids = pg.partitions.map(_.index).toArray
         new CoalescedRDDPartition(i, prev, ids, pg.prefLoc)
+    }
+  }
+
+  override def getTruncatedPartitions(availableRDDs: List[RDD[_]]): Array[Partition] = {
+    if (availableRDDs.contains(this)) {
+      noDepPartitions
+    } else {
+      val pc = partitionCoalescer.getOrElse(new DefaultPartitionCoalescer())
+
+      pc.coalesce(maxPartitions, prev).zipWithIndex.map {
+        case (pg, i) =>
+          prev.truncatedPartitions(availableRDDs)
+          val ids = pg.partitions.map(_.index).toArray
+          new CoalescedRDDPartition(i, prev, ids, pg.prefLoc, true)
+      }
     }
   }
 
